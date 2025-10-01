@@ -1,0 +1,163 @@
+import java.util.Properties
+
+/* ───────── PROPERTY LOADER ───────── */
+def props = new Properties()
+def propsFile = rootProject.file('local.properties')
+if (propsFile.exists()) propsFile.withReader('UTF-8') { props.load(it) }
+
+def flutterRoot = props['flutter.sdk']
+if (!flutterRoot) throw new GradleException(
+        "Flutter SDK not found. Add flutter.sdk to local.properties")
+
+def flutterVersionCode = (props['flutter.versionCode'] ?: '1') as int
+def flutterVersionName = props['flutter.versionName'] ?: '1.0'
+
+/* ───────── ANDROID PLUG-INS ───────── */
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
+apply plugin: 'com.google.gms.google-services'
+
+/* ───────── ANDROID BLOCK ───────── */
+android {
+    compileSdkVersion 35
+    ndkVersion "28.0.12433566"
+
+    defaultConfig {
+        applicationId "com.PayChoice.Member360"
+        minSdkVersion 29
+        targetSdkVersion flutter.targetSdkVersion
+        versionCode flutterVersionCode
+        versionName flutterVersionName
+        multiDexEnabled true
+    }
+
+    compileOptions {
+        coreLibraryDesugaringEnabled true
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    kotlinOptions { jvmTarget = '1.8' }
+    sourceSets { main.java.srcDirs += 'src/main/kotlin' }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
+                          'proguard-rules.pro',
+                          'proguard-openpath.pro',
+                          'proguard-conscrypt.pro'
+        }
+        debug { minifyEnabled false }
+    }
+
+    // Not using Play-Feature Delivery
+    bundle {
+        language { enableSplit = false }
+        density  { enableSplit = false }
+        abi      { enableSplit = false }
+    }
+
+    flavorDimensions "app"
+    productFlavors {
+        dev   { dimension "app"; applicationId "com.PayChoice.Member360" }
+        prod  { dimension "app"; applicationId "com.PayChoice.Member360" }
+        stage { dimension "app"; applicationId "com.PayChoice.Member360" }
+    }
+
+    namespace 'com.PayChoice.Member360'
+}
+
+/* ───────── REPOSITORIES ───────── */
+repositories {
+    google()
+    mavenCentral()
+    maven { url 'https://jitpack.io' }
+    maven { url 'https://storage.googleapis.com/download.flutter.io' } // truetime-android
+    flatDir { dirs 'libs' }
+}
+
+/* ───────── DEPENDENCIES ───────── */
+dependencies {
+    /* OpenPath AARs */
+    implementation(name: "openpath-mobile-access-core-v0.5.0", ext: "aar")
+    implementation(name: "openpath-mobile-access-allegion-v0.5.0", ext: "aar")
+
+    /* Play Core */
+    implementation 'com.google.android.play:core:1.10.3'
+
+    /* Lumberjack */
+    implementation 'com.github.mflisar:lumberjack:6.0.7'
+    implementation 'com.auth0.android:jwtdecode:2.0.2'
+
+    /* AppCenter */
+    implementation 'com.microsoft.appcenter:appcenter-analytics:5.0.4'
+    implementation 'com.microsoft.appcenter:appcenter-crashes:5.0.4'
+    implementation 'com.microsoft.appcenter:appcenter-distribute:5.0.4'
+
+    /* Networking */
+    implementation 'io.reactivex.rxjava2:rxjava:2.2.21'
+    implementation 'com.squareup.retrofit2:retrofit:2.9.0'
+    implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
+    implementation 'com.squareup.retrofit2:adapter-rxjava2:2.9.0'
+    implementation 'com.squareup.okhttp3:okhttp:4.11.0'
+    implementation 'com.squareup.okhttp3:logging-interceptor:4.11.0'
+    implementation 'com.jakewharton.timber:timber:5.0.1'
+
+    /* SpongyCastle */
+    implementation 'com.madgag.spongycastle:core:1.58.0.0'
+    implementation 'com.madgag.spongycastle:bcpkix-jdk15on:1.58.0.0'
+
+    /* Kotlin & coroutines */
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+
+    /* AndroidX / Google */
+    implementation 'androidx.core:core-ktx:1.12.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.2'
+    implementation 'androidx.work:work-runtime-ktx:2.9.0'
+    implementation 'com.google.android.gms:play-services-location:21.1.0'
+    implementation 'com.google.android.material:material:1.12.0'
+
+    /* Firebase SafetyNet */
+    implementation 'com.google.firebase:firebase-appcheck-safetynet:16.1.2'
+
+    /* Existing crypto / utils */
+    implementation 'org.bouncycastle:bcprov-jdk15to18:1.70'
+    implementation 'org.bouncycastle:bcpkix-jdk15to18:1.70'
+    implementation 'org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5'
+    implementation 'com.google.code.gson:gson:2.10.1'
+    implementation 'at.favre.lib:bcrypt:0.9.0'
+
+    /* AWS */
+    implementation 'com.amazonaws:aws-android-sdk-core:2.80.0'
+    implementation 'com.amazonaws:aws-android-sdk-logs:2.80.0'
+
+    /* TrueTime */
+    implementation 'com.github.instacart.truetime-android:library:3.5'
+
+    /* Nordic BLE */
+    implementation 'no.nordicsemi.android:ble:2.6.1'
+    implementation 'no.nordicsemi.android.support.v18:scanner:1.6.0'
+
+    /* Conscrypt */
+    implementation 'org.conscrypt:conscrypt-android:2.5.2'
+
+    /* Desugaring */
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
+}
+
+/* ───────── FLUTTER ───────── */
+flutter { source '../..' }
+
+/* ───────── FORCE KOTLIN VERSION ───────── */
+configurations.all {
+    resolutionStrategy {
+        force "org.jetbrains.kotlin:kotlin-stdlib:2.0.21"
+        force "org.jetbrains.kotlin:kotlin-stdlib-common:2.0.21"
+        force "org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.0.21"
+        force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.0.21"
+    }
+}

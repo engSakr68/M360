@@ -1,0 +1,7 @@
+<svg id="details-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <rect id="Rectangle_2400" data-name="Rectangle 2400" width="24" height="24" fill="none"/>
+  <g id="Group_15821" data-name="Group 15821" transform="translate(-291 -12)">
+    <path id="Icon_material-short-text" data-name="Icon material-short-text" d="M20,9H4v2H20Zm0,4H8v2H20Z" transform="translate(291 10)" fill="rgba(35,147,151,0.98)"/>
+    <path id="Icon_material-short-text-2" data-name="Icon material-short-text" d="M20,9H12v2h8Z" transform="translate(291 18)" fill="rgba(35,147,151,0.98)"/>
+  </g>
+</svg>

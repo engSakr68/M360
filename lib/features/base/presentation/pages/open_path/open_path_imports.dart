@@ -1,0 +1,33 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io' show Platform;
+
+import 'package:auto_route/auto_route.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:member360/core/bloc/value_state_manager/value_state_manager_import.dart';
+import 'package:member360/core/constants/app_constants.dart';
+import 'package:member360/core/constants/gaps.dart';
+import 'package:member360/core/helpers/app_snack_bar_service.dart';
+import 'package:member360/core/helpers/di.dart';
+import 'package:member360/core/helpers/global_context.dart';
+import 'package:member360/core/helpers/loading_helper.dart';
+import 'package:member360/core/helpers/services/open_path_plugin.dart';
+import 'package:member360/core/helpers/services/psermission_services.dart';
+import 'package:member360/core/helpers/user_helper_service.dart';
+import 'package:member360/core/http/models/result.dart';
+import 'package:member360/core/routes/router_imports.gr.dart';
+import 'package:member360/core/theme/colors/colors_extension.dart';
+import 'package:member360/core/theme/text/app_text_style.dart';
+import 'package:member360/core/widgets/app_button.dart';
+import 'package:member360/core/widgets/default_app_bar.dart';
+import 'package:member360/features/base/domain/repositories/base_repository.dart';
+import 'package:member360/openpath/openpath_service.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+part "open_path.dart";
+part "open_path_controller.dart";

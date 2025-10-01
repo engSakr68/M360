@@ -1,0 +1,43 @@
+import 'package:member360/core/http/models/result.dart';
+import 'package:member360/features/auth/data/models/user_info_model/user_info_model.dart';
+import 'package:member360/features/base/data/models/active_plan_model/active_plan_model.dart';
+import 'package:member360/features/base/data/models/book_model/book_model.dart';
+import 'package:member360/features/base/data/models/book_session_model/book_session_model.dart';
+import 'package:member360/features/base/data/models/class_model/class_model.dart';
+import 'package:member360/features/base/data/models/filter_model/filter_model.dart';
+import 'package:member360/features/base/data/models/gym_model/gym_model.dart';
+import 'package:member360/features/base/data/models/invoice_model/invoice_model.dart';
+import 'package:member360/features/base/data/models/session_model/session_model.dart';
+import 'package:member360/features/base/data/models/trainer_model/trainer_model.dart';
+import 'package:member360/features/base/domain/entities/class_params.dart';
+import 'package:member360/features/base/domain/entities/deactivate_params.dart';
+import 'package:member360/features/base/domain/entities/download_params.dart';
+import 'package:member360/features/base/domain/entities/password_params.dart';
+import 'package:member360/features/base/domain/entities/pay_invoice_params.dart';
+import 'package:member360/features/base/domain/entities/profile_params.dart';
+import 'package:member360/features/base/domain/entities/pt_session_model.dart';
+import 'package:member360/features/base/domain/entities/session_params.dart';
+import 'package:member360/features/base/domain/entities/switch_user_params.dart';
+
+abstract class HomeRemoteDataSource {
+  Future<MyResult<UserInfoModel>> getProfile(bool param);
+  Future<MyResult<UserInfoModel>> editProfile(ProfileParams param);
+  Future<MyResult<String>> changePassword(PasswordParams param);
+  Future<MyResult<SessionModel>> getPTSessions(PTSessionParams param);
+  Future<MyResult<List<TrainerModel>>> getTrainers(PTSessionParams param);
+  Future<MyResult<List<GymModel>>> getGyms(bool param);
+  Future<MyResult<List<GymModel>>> getActiveGyms(bool param);
+  Future<MyResult<FilterModel>> getFilter(bool param);
+  Future<MyResult<BookModel>> bookClass(int param);
+  Future<MyResult<BookSessionModel>> bookPTSession(SessionParams param);
+  Future<MyResult<String>> cancelClass(int param);
+  Future<MyResult<List<ClassModel>>> getClassCalendar(ClassParams param);
+  Future<MyResult<List<ClassModel>>> getClasses(ClassParams param);
+  Future<MyResult<List<ActivePlanModel>>> getActivePlans(String param);
+  Future<MyResult<List<InvoiceModel>>> getMemberInvoices(String param);
+  Future<MyResult<String>> payInvoice(PayInvoiceParams param);
+  Future<MyResult<String>> deactivate(DeactivateParams param);
+  Future<MyResult<String>> downloadPayment(DownloadParams param);
+  Future<MyResult<String>> switchUser(SwitchUserParams params);
+  Future<MyResult<String>> generateOP(bool params);
+}

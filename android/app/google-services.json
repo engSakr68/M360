@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "422248073001",
+    "project_id": "member360-a283a",
+    "storage_bucket": "member360-a283a.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:422248073001:android:67146257fa0ee1d5d89938",
+        "android_client_info": {
+          "package_name": "com.PayChoice.Member360"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAtm4wXokBuVgOYnB5RBe1UoSD50s3GnyE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

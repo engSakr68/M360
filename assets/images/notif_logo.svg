@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <g id="notif_icon" transform="translate(1.692)">
+    <path id="Icon_ionic-md-notifications-outline" data-name="Icon ionic-md-notifications-outline" d="M13.962,6.431a8.34,8.34,0,0,1,1.379.258,5.879,5.879,0,0,1,4.481,5.761v7.362l.538.54.449.451H7l.449-.451.538-.54V12.45a5.879,5.879,0,0,1,4.481-5.761,10.213,10.213,0,0,1,1.379-.258M13.9,2.25a1.764,1.764,0,0,0-1.792,1.8v.84a7.778,7.778,0,0,0-5.973,7.56v6.6L3.75,21.45v1.2H24.058v-1.2l-2.389-2.4v-6.6A7.778,7.778,0,0,0,15.7,4.89V4.05A1.764,1.764,0,0,0,13.9,2.25Zm2.389,21.6H11.515a2.389,2.389,0,1,0,4.778,0Z" transform="translate(-3.75 -2.25)" fill="rgba(35,147,151,0.98)"/>
+    <rect id="Rectangle_1931" data-name="Rectangle 1931" width="24" height="24" transform="translate(-1.692)" fill="none"/>
+  </g>
+</svg>

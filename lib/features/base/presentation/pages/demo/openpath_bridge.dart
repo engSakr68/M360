@@ -1,0 +1,237 @@
+import 'dart:async';
+import 'dart:convert';
+import 'package:flutter/services.dart';
+
+/// =========================
+/// Event model
+/// =========================
+class OpenpathEvent {
+  final String event;
+  final dynamic data;
+
+  OpenpathEvent({required this.event, this.data});
+
+  factory OpenpathEvent.fromJson(Map<String, dynamic> json) {
+    return OpenpathEvent(
+      event: json['event'] ?? 'unknown',
+      data: json['data'],
+    );
+  }
+
+  @override
+  String toString() => 'OpenpathEvent(event: $event, data: $data)';
+}
+
+/// =========================
+/// Provision status model
+/// =========================
+class ProvisionStatus {
+  final bool isProvisioned;
+  final String? userOpal;
+  final List<String> userOpals;
+  final List<String> availableMethods;
+  final bool hasProvisionMethod;
+  final bool hasUnprovisionMethod;
+  final bool hasGetUserOpalMethod;
+  final String? error;
+
+  ProvisionStatus({
+    required this.isProvisioned,
+    this.userOpal,
+    this.userOpals = const [],
+    this.availableMethods = const [],
+    this.hasProvisionMethod = false,
+    this.hasUnprovisionMethod = false,
+    this.hasGetUserOpalMethod = false,
+    this.error,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'isProvisioned': isProvisioned,
+      'userOpal': userOpal,
+      'userOpals': userOpals,
+      'availableMethods': availableMethods,
+      'hasProvisionMethod': hasProvisionMethod,
+      'hasUnprovisionMethod': hasUnprovisionMethod,
+      'hasGetUserOpalMethod': hasGetUserOpalMethod,
+      'error': error,
+    };
+  }
+
+  @override
+  String toString() => toJson().toString();
+}
+
+/// =========================
+/// Bridge
+/// =========================
+class OpenpathBridge {
+  OpenpathBridge._(); // Private constructor
+  static final OpenpathBridge instance = OpenpathBridge._(); // Singleton instance
+
+  static const _method = MethodChannel('openpath');
+  static const _events = EventChannel('openpath_events');
+
+  // 🔹 Raw events as Map
+  static Stream<Map<String, dynamic>> get _rawEvents =>
+      _events.receiveBroadcastStream().map((e) {
+        if (e is String) {
+          try {
+            return json.decode(e) as Map<String, dynamic>;
+          } catch (_) {
+            return <String, dynamic>{'raw': e};
+          }
+        } else if (e is Map) {
+          return Map<String, dynamic>.from(e);
+        }
+        return <String, dynamic>{'unknown': e.toString()};
+      });
+
+  // 🔹 Typed events
+  static Stream<OpenpathEvent> get events =>
+      _rawEvents.map((m) => OpenpathEvent.fromJson(m));
+
+  // ----- Permissions / toggles -----
+  /// ✅ dummy permissions always return ok because v0.5.0 SDK doesn’t handle them
+  static Future<bool> requestPermissions() async {
+    try {
+      return await _method.invokeMethod<bool>('requestPermissions') ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  static Future<Map<String, dynamic>> getPermissionStatus() async {
+    try {
+      return Map<String, dynamic>.from(
+        await _method.invokeMethod('getPermissionStatus'),
+      );
+    } catch (_) {
+      // fallback dummy data
+      return {
+        'btOn': true,
+        'locationOn': true,
+        'notificationsOn': true,
+        'baseOk': true,
+        'bgOk': true,
+      };
+    }
+  }
+
+  static Future<void> promptEnableBluetooth() async {
+    try {
+      await _method.invokeMethod('promptEnableBluetooth');
+    } catch (_) {}
+  }
+
+  static Future<void> openLocationSettings() async {
+    try {
+      await _method.invokeMethod('openLocationSettings');
+    } catch (_) {}
+  }
+
+  // ----- Provisioning -----
+  static String? extractOpalFromJwt(String jwt) {
+    try {
+      final parts = jwt.split('.');
+      if (parts.length != 3) return null;
+      String b64 = parts[1].replaceAll('-', '+').replaceAll('_', '/');
+      while (b64.length % 4 != 0) {
+        b64 += '=';
+      }
+      final payload =
+          json.decode(utf8.decode(base64.decode(b64))) as Map<String, dynamic>;
+      return payload['userOpal'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<bool> provisionWhenReady(
+    String jwt, {
+    String? opal,
+    String? deviceToken,
+  }) async {
+    final args = <String, dynamic>{
+      'jwt': jwt.trim(),
+      'opal': opal ?? extractOpalFromJwt(jwt),
+      'deviceToken': deviceToken ?? "flutter-test-device",
+    };
+
+    for (int i = 0; i < 3; i++) {
+      try {
+        print("Provision args: $args");
+        final ok = await _method.invokeMethod<bool>('provision', args) ?? false;
+        if (ok) return true;
+      } catch (e) {
+        print('Provision attempt $i failed: $e');
+      }
+      await Future.delayed(const Duration(seconds: 2));
+    }
+    return false;
+  }
+
+  static Future<bool> unprovision(String opal) async {
+    try {
+      return await _method.invokeMethod<bool>('unprovision', {'opal': opal}) ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ----- Status Checking -----
+  static Future<List<String>> getAvailableMethods() async {
+    try {
+      final methods =
+          await _method.invokeMethod<List<dynamic>>('getAvailableMethods');
+      return methods?.map((e) => e.toString()).toList() ?? [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<String?> getUserOpal() async {
+    try {
+      return await _method.invokeMethod<String?>('getUserOpal');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<ProvisionStatus> checkProvisionStatus() async {
+    try {
+      final userOpal = await getUserOpal();
+      final methods = await getAvailableMethods();
+
+      return ProvisionStatus(
+        isProvisioned: userOpal != null && userOpal.isNotEmpty,
+        userOpal: userOpal,
+        userOpals: [],
+        availableMethods: methods,
+        hasProvisionMethod: methods.contains('provision'),
+        hasUnprovisionMethod: methods.contains('unprovision'),
+        hasGetUserOpalMethod: methods.contains('getUserOpal'),
+      );
+    } catch (e) {
+      return ProvisionStatus(
+        isProvisioned: false,
+        userOpal: null,
+        userOpals: [],
+        availableMethods: [],
+        error: e.toString(),
+      );
+    }
+  }
+
+  // Add `initialize` method here to initialize the SDK
+  Future<bool> initialize() async {
+    try {
+      final result = await _method.invokeMethod('initialize');
+      return result ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+}

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- already-existing Flutter entry; leave if it’s there -->
+    <string name="APP_APP_NAME">Member360</string>
+
+    <!-- new texts just for the apduservice descriptor -->
+    <string name="allegion_service_desc">Allegion HCE service</string>
+    <string name="allegion_aid_group">Allegion credential</string>
+</resources>

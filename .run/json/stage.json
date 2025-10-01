@@ -1,0 +1,15 @@
+{
+  "APP_ID": "com.PayChoice.Member360",
+  "APP_ENV_NAME": "stage",
+  "APP_BASE_URL": "manage.gymvue.com.au",
+  "APP_API": "/api/app/",
+  "APP_APP_NAME_EN": "Member360",
+  "APP_APP_NAME_AR": "Member360",
+  "APP_LOCAL_LOGO": "assets/images/logo-release.png",
+  "SPLASH_LOGO": "assets/images/logo-release.png",
+  "APP_ANDROID_LINK": "https://play.google.com/store/apps/details?id=com.PayChoice.Member360",
+  "APP_IOS_LINK": "https://apps.apple.com/us/app/%D8%B3%D9%85%D8%A7%D8%AA-%D8%B9%D9%82%D8%A7%D8%B1%D8%A7%D8%AA%D9%83-%D9%81%D9%8A-%D8%AC%D9%88%D8%A7%D9%84%D9%83/id6451408354",
+  "PRIMARY_COLOR": "#DD2D92",
+  "SECONDARY_COLOR": "#FFA077",
+  "TEXT_COLOR": "#239397"
+}

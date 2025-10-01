@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "390312595935",
+    "project_id": "m60scanner",
+    "storage_bucket": "m60scanner.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:390312595935:android:a576b41c02d2f721ea346a",
+        "android_client_info": {
+          "package_name": "au.m360.scanner"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBPL13mpu2NTOjs5j3qkgbUSKq16bYXYwk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

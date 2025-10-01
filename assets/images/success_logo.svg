@@ -1,0 +1,6 @@
+<svg id="success_img" xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+  <circle id="Ellipse_17" data-name="Ellipse 17" cx="50" cy="50" r="50" fill="#fff"/>
+  <g id="success-icon" transform="translate(31.528 37.213)">
+    <path id="Path_23" data-name="Path 23" d="M28.1,25.676v0a1.667,1.667,0,0,0-.512-1.2h0L2.834.461l0,0A1.672,1.672,0,1,0,.583,2.942l23.48,22.734-8.88,8.88h0a1.673,1.673,0,0,0,2.365,2.365h0L27.587,26.884h0a1.667,1.667,0,0,0,.512-1.2Z" transform="translate(37.39) rotate(90)" fill="#eaac27" stroke="#eaac27" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/>
+  </g>
+</svg>
