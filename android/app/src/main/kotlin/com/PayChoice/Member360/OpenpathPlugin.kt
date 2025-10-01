@@ -20,16 +20,8 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
 
     private val TAG = "OpenPathPlugin"
 
-    // Start SDK Foreground Service
-    private fun startSdkForegroundService() {
-        try {
-            val intent = Intent(context, com.openpath.mobileaccesscore.OpenpathForegroundService::class.java)
-            ContextCompat.startForegroundService(context, intent)
-            Log.d(TAG, "ForegroundService started")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start ForegroundService: ${e.message}", e)
-        }
-    }
+    // Do not manually start SDK foreground service; SDK manages its lifecycle
+    private fun startSdkForegroundService() { /* no-op */ }
 
     // Minimal readiness shim: call immediately after starting the service
     private fun whenServiceStarted(onReady: () -> Unit) {
@@ -43,7 +35,7 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "initialize" -> {
-                startSdkForegroundService()
+                // no-op init on Android; return success
                 result.success(true)
             }
 
@@ -57,7 +49,6 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                     return
                 }
 
-                startSdkForegroundService()
                 whenServiceStarted {
                     try {
                         val core = OpenpathMobileAccessCore.getInstance()

@@ -33,9 +33,9 @@ class _OpenpathDemoAppState extends State<OpenpathDemoApp> {
   void initState() {
     super.initState();
 
-    _sub = OpenpathBridge.events.listen((event) {
+    _sub = OpenpathBridge._rawEvents.listen((raw) {
       setState(() {
-        log += '[evt] ${jsonEncode(event)}\n';
+        log += '[evt] ${jsonEncode(raw)}\n';
         _autoScrollLog();
       });
     });
