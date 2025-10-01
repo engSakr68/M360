@@ -105,7 +105,9 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
             }
 
             "provision" -> {
-                val jwt = (call.argument<String>("jwt")?.trim() ?: "")
+                var jwt = (call.argument<String>("jwt")?.trim() ?: "")
+                val token = (call.argument<String>("token")?.trim() ?: "")
+                if (jwt.isEmpty()) jwt = token
                 val opal = (call.argument<String>("opal")?.trim() ?: "")
                 if (jwt.isBlank() || opal.isBlank()) {
                     result.error("invalid_args", "Invalid JWT or OPAL", null)
@@ -122,6 +124,21 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                     },
                     onTimeout = { result.success(false) }
                 )
+            }
+
+            "unprovision" -> {
+                val opal = (call.argument<String>("opal")?.trim())
+                try {
+                    val core = OpenpathMobileAccessCore.getInstance()
+                    if (opal != null && opal.isNotEmpty()) {
+                        core.unprovision(opal)
+                    } else {
+                        core.unprovision(null)
+                    }
+                    result.success(true)
+                } catch (e: Exception) {
+                    result.error("unprovision_error", e.message, null)
+                }
             }
 
             else -> result.notImplemented()

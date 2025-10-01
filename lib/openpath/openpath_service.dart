@@ -7,7 +7,7 @@ import 'package:member360/features/base/domain/repositories/base_repository.dart
 import 'package:permission_handler/permission_handler.dart';
 
 class OpenpathService {
-  static const _channel = MethodChannel('openpath_bridge');
+  static const _channel = MethodChannel('openpath');
 
   static Future<bool> _ensurePermissions() async {
     if (await Permission.bluetooth.isGranted &&

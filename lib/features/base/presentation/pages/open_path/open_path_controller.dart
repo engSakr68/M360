@@ -42,7 +42,7 @@ class OpenPathController {
     });
   }
 
-  static const _channel = MethodChannel('openpath_bridge');
+  static const _channel = MethodChannel('openpath');
 
   /// `null` → not provisioned | non-null → credential details
   ObsValue<Map<String, dynamic>?> credentialObs =

@@ -21,12 +21,12 @@ public class OpenpathBridge: NSObject, FlutterPlugin, FlutterStreamHandler, Open
 
   // MARK: - Register
   public static func register(with registrar: FlutterPluginRegistrar) {
-    methodChannel = FlutterMethodChannel(name: "openpath_bridge", binaryMessenger: registrar.messenger())
+    methodChannel = FlutterMethodChannel(name: "openpath", binaryMessenger: registrar.messenger())
     let instance = OpenpathBridge()
     shared = instance
     registrar.addMethodCallDelegate(instance, channel: methodChannel)
 
-    eventChannel = FlutterEventChannel(name: "openpath_bridge/events", binaryMessenger: registrar.messenger())
+    eventChannel = FlutterEventChannel(name: "openpath_events", binaryMessenger: registrar.messenger())
     eventChannel.setStreamHandler(instance)
 
     // Set delegate early so we get SDK events even before the first Dart call
@@ -62,13 +62,20 @@ public class OpenpathBridge: NSObject, FlutterPlugin, FlutterStreamHandler, Open
     switch call.method {
 
     case "provision":
-      guard
-        let args = call.arguments as? [String: Any],
-        let token = args["token"] as? String, !token.isEmpty
-      else { return result(FlutterError(code: "bad_args", message: "Missing token", details: nil)) }
+      guard let args = call.arguments as? [String: Any] else {
+        return result(FlutterError(code: "bad_args", message: "Missing args", details: nil))
+      }
 
-      core.provision(setupMobileToken: token)
-      result(nil)
+      // Accept either 'token' or legacy 'jwt' key from the Flutter side.
+      let token = (args["token"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        ?? (args["jwt"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+      guard let setupToken = token, !setupToken.isEmpty else {
+        return result(FlutterError(code: "bad_args", message: "Missing token/jwt", details: nil))
+      }
+
+      core.provision(setupMobileToken: setupToken)
+      result(true)
 
     case "unprovision":
       let userOpal = (call.arguments as? [String: Any])?["userOpal"] as? String
