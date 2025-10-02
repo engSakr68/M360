@@ -19,10 +19,16 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
     private val TAG = "OpenPathPlugin"
 
     // Start SDK Foreground Service
+    private var foregroundServiceStarted: Boolean = false
     private fun startSdkForegroundService() {
         try {
+            if (foregroundServiceStarted) {
+                Log.d(TAG, "ForegroundService already started; skipping")
+                return
+            }
             val intent = Intent(context, com.openpath.mobileaccesscore.OpenpathForegroundService::class.java)
             ContextCompat.startForegroundService(context, intent)
+            foregroundServiceStarted = true
             Log.d(TAG, "ForegroundService started")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start ForegroundService: ${e.message}", e)
@@ -55,7 +61,6 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                     return
                 }
 
-                startSdkForegroundService()
                 whenServiceStarted {
                     try {
                         val core = OpenpathMobileAccessCore.getInstance()
