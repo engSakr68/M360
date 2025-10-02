@@ -11,17 +11,14 @@ class OpenpathService {
   static const _channel = MethodChannel('openpath');
 
   static Future<bool> _ensurePermissions() async {
-    if (await Permission.bluetooth.isGranted &&
-        await Permission.bluetoothScan.isGranted &&
-        await Permission.bluetoothConnect.isGranted) return true;
-    final statuses = await [
-      Permission.bluetooth,
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.locationWhenInUse,
-      Permission.notification,
-    ].request();
-    return statuses.values.every((s) => s.isGranted);
+    // Use the native plugin's permission handling instead of permission_handler
+    // to avoid conflicts and ensure proper OpenPath SDK integration
+    try {
+      return await _channel.invokeMethod<bool>('requestPermissions') ?? false;
+    } catch (e) {
+      print('Failed to request permissions via native plugin: $e');
+      return false;
+    }
   }
 
   static Future<Map<String,dynamic>?> provision(String token) async {
