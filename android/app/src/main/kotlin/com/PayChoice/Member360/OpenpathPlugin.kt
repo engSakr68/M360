@@ -209,14 +209,39 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
 
                 whenServiceStarted {
                     try {
-                        // Give the service a brief moment to complete onStart and initialize
-                        // its internals to avoid SDK's "foreground service is null" race.
-                        Thread.sleep(150)
-                        val core = OpenpathMobileAccessCore.getInstance()
-                        core.provision(jwt, opal)
-                        result.success(true)
+                        // Retry with exponential backoff to avoid race where SDK foreground service is not yet bound
+                        val backoffsMs = intArrayOf(150, 300, 600, 1200)
+                        var attempt = 0
+                        var success = false
+                        var lastError: Exception? = null
+
+                        while (attempt < backoffsMs.size && !success) {
+                            try {
+                                if (attempt > 0) {
+                                    Thread.sleep(backoffsMs[attempt])
+                                } else {
+                                    Thread.sleep(backoffsMs[attempt])
+                                }
+                                val core = OpenpathMobileAccessCore.getInstance()
+                                core.provision(jwt, opal)
+                                success = true
+                                break
+                            } catch (e: Exception) {
+                                lastError = e
+                                Log.w(TAG, "Provision attempt ${attempt + 1} failed: ${e.message}")
+                                attempt++
+                            }
+                        }
+
+                        if (success) {
+                            result.success(true)
+                        } else {
+                            val msg = lastError?.message ?: "Unknown provision error"
+                            Log.e(TAG, "Provision error after retries: $msg", lastError)
+                            result.error("provision_error", msg, null)
+                        }
                     } catch (e: Exception) {
-                        Log.e(TAG, "Provision error: ${e.message}", e)
+                        Log.e(TAG, "Provision error (outer): ${e.message}", e)
                         result.error("provision_error", e.message, null)
                     }
                 }
