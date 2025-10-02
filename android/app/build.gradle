@@ -110,6 +110,44 @@ android {
     }
 
     flavorDimensions "app"
+    productFlavors {
+        dev {
+            dimension "app"
+            applicationId dartEnvironmentVariables.APP_ID
+            copy {
+                from 'src/dev/'
+                include '*.json'
+                into '.'
+            }
+        }
+        prod {
+            dimension "app"
+            applicationId dartEnvironmentVariables.APP_ID
+            copy {
+                from 'src/prod/'
+                include '*.json'
+                into '.'
+            }
+        }
+        stage {
+            dimension "app"
+            applicationId dartEnvironmentVariables.APP_ID
+            copy {
+                from 'src/stage/'
+                include '*.json'
+                into '.'
+            }
+        }
+        sdn {
+            dimension "app"
+            applicationId dartEnvironmentVariables.APP_ID
+            copy {
+                from 'src/sdn/'
+                include '*.json'
+                into '.'
+            }
+        }
+    }
     namespace 'com.PayChoice.Member360'
 }
 
