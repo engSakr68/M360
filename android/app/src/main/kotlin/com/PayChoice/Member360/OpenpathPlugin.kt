@@ -1,6 +1,7 @@
 package com.PayChoice.Member360
 
 import android.Manifest
+import android.app.ActivityManager
 import android.app.NotificationManager
 import android.bluetooth.BluetoothAdapter
 import android.content.Context
@@ -44,6 +45,19 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
         }
     }
 
+    private fun isAppInForeground(): Boolean {
+        return try {
+            val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val appProcesses = activityManager.runningAppProcesses ?: return false
+                val myPackage = context.packageName
+                appProcesses.any { it.processName == myPackage && it.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND }
+            } else {
+                true
+            }
+        } catch (_: Exception) { false }
+    }
+
     private fun startSdkForegroundService(): Boolean {
         try {
             if (foregroundServiceStarted) {
@@ -57,9 +71,18 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
             }
 
             val intent = Intent(context, com.openpath.mobileaccesscore.OpenpathForegroundService::class.java)
-            ContextCompat.startForegroundService(context, intent)
-            foregroundServiceStarted = true
-            Log.d(TAG, "ForegroundService start requested")
+
+            // If app is in foreground, prefer startService to avoid FGS timeout.
+            // On background, use startForegroundService.
+            if (isAppInForeground()) {
+                context.startService(intent)
+                Log.d(TAG, "startService invoked for OpenpathForegroundService (app in foreground)")
+            } else {
+                ContextCompat.startForegroundService(context, intent)
+                Log.d(TAG, "startForegroundService invoked for OpenpathForegroundService (app in background)")
+            }
+            // Do not mark as started until service posts its notification; rely on idempotency when called again
+            foregroundServiceStarted = false
             return true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start ForegroundService: ${e.message}", e)
