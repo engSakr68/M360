@@ -33,6 +33,7 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
     private lateinit var context: Context
     private lateinit var methodChannel: MethodChannel
     private lateinit var eventChannel: EventChannel
+    private var eventSink: EventChannel.EventSink? = null
 
     private val TAG = "OpenPathPlugin"
 
@@ -228,6 +229,50 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                 onReady() // Proceed anyway
             }
         }
+    }
+
+    private fun emitEvent(name: String, data: Any?) {
+        try {
+            eventSink?.success(mapOf("event" to name, "data" to data))
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to emit event ${name}: ${e.message}")
+        }
+    }
+
+    private fun emitProvisionStatus(ok: Boolean, message: String) {
+        try {
+            methodChannel.invokeMethod(
+                "provisionStatus",
+                mapOf(
+                    "ok" to ok,
+                    "message" to message
+                )
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to emit provisionStatus: ${e.message}")
+        }
+    }
+
+    private fun provisionWithRetries(jwt: String, opal: String): Boolean {
+        val backoff = arrayOf(200L, 400L, 800L, 1600L, 2400L)
+        for (i in backoff.indices) {
+            try {
+                if (!startSdkForegroundService()) {
+                    Log.w(TAG, "provision attempt ${i}: foreground service not started")
+                }
+                // Give the service a moment to initialize its internal references
+                Thread.sleep(150)
+                val core = OpenpathMobileAccessCore.getInstance()
+                core.provision(jwt, opal)
+                return true
+            } catch (e: Exception) {
+                val msg = e.message ?: ""
+                Log.w(TAG, "Provision attempt ${i} failed: ${msg}")
+                // Retry on likely race condition where foreground service ref is null; otherwise still retry a few times
+            }
+            try { Thread.sleep(backoff[i]) } catch (_: InterruptedException) {}
+        }
+        return false
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -568,132 +613,28 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                     return
                 }
 
-                if (!startSdkForegroundService()) {
-                    result.error("fgs_not_started", "Foreground service not started (likely missing notification permission)", null)
-                    return
-                }
+                emitEvent("provisioning_started", System.currentTimeMillis())
+                emitProvisionStatus(true, "provisioning_started")
 
                 whenServiceStarted {
                     // This is already running in background executor from whenServiceStarted
                     try {
-                        val backoffsMs = intArrayOf(1000, 2000, 3000, 5000, 8000)
-                        var attempt = 0
-                        var lastError: Exception? = null
-
-                        while (attempt < backoffsMs.size) {
-                            try {
-                                // Wait before each attempt to give SDK service time to initialize
-                                Thread.sleep(backoffsMs[attempt].toLong())
-                                
-                                val core = OpenpathMobileAccessCore.getInstance()
-                                
-                                // Try multiple initialization approaches
-                                var sdkInitialized = false
-                                
-                                // Approach 1: Use service instance if available
-                                if (serviceBound && serviceInstance != null) {
-                                    Log.d(TAG, "Using bound service instance for SDK initialization")
-                                    initializeSdkWithService()
-                                    sdkInitialized = true
-                                } else {
-                                    Log.w(TAG, "Service not bound or instance null, trying alternative approaches")
-                                }
-                                
-                                // Approach 2: Try to initialize with context
-                                if (!sdkInitialized) {
-                                    try {
-                                        val initMethod = core.javaClass.getMethod("initialize", Context::class.java)
-                                        initMethod.invoke(core, context.applicationContext)
-                                        Log.d(TAG, "Initialized SDK with context")
-                                        sdkInitialized = true
-                                    } catch (e: NoSuchMethodException) {
-                                        Log.d(TAG, "SDK doesn't have initialize(Context) method")
-                                    } catch (e: Exception) {
-                                        Log.w(TAG, "Failed to initialize SDK with context: ${e.message}")
-                                    }
-                                }
-                                
-                                // Approach 3: Try init without parameters (SDK might auto-detect service)
-                                if (!sdkInitialized) {
-                                    try {
-                                        val initMethod = core.javaClass.getMethod("init")
-                                        initMethod.invoke(core)
-                                        Log.d(TAG, "Initialized SDK with parameterless init")
-                                        sdkInitialized = true
-                                    } catch (e: NoSuchMethodException) {
-                                        Log.d(TAG, "SDK doesn't have parameterless init method")
-                                    } catch (e: Exception) {
-                                        Log.w(TAG, "Failed to initialize SDK with parameterless init: ${e.message}")
-                                    }
-                                }
-                                
-                                // Approach 4: Try to rebind service if still not initialized
-                                if (!sdkInitialized && (!serviceBound || serviceInstance == null)) {
-                                    Log.w(TAG, "Attempting to rebind service for SDK initialization")
-                                    val serviceIntent = Intent(context, com.openpath.mobileaccesscore.OpenpathForegroundService::class.java)
-                                    try {
-                                        context.bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT)
-                                        Thread.sleep(1500) // Wait for binding
-                                        
-                                        if (serviceBound && serviceInstance != null) {
-                                            initializeSdkWithService()
-                                            sdkInitialized = true
-                                        }
-                                    } catch (e: Exception) {
-                                        Log.w(TAG, "Failed to rebind service: ${e.message}")
-                                    }
-                                }
-                                
-                                // Verify service is still running
-                                val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-                                val isServiceRunning = activityManager.getRunningServices(Integer.MAX_VALUE)
-                                    .any { it.service.className == "com.openpath.mobileaccesscore.OpenpathForegroundService" }
-                                
-                                if (!isServiceRunning) {
-                                    Log.w(TAG, "Service not running, restarting")
-                                    val serviceIntent = Intent(context, com.openpath.mobileaccesscore.OpenpathForegroundService::class.java)
-                                    if (isAppInForeground()) {
-                                        context.startService(serviceIntent)
-                                    } else {
-                                        ContextCompat.startForegroundService(context, serviceIntent)
-                                    }
-                                    Thread.sleep(2000)
-                                }
-                                
-                                Log.d(TAG, "Attempting provision with JWT: ${jwt.take(20)}... and OPAL: ${opal.take(20)}...")
-                                
-                                // Try provision with different parameter combinations
-                                try {
-                                    // First try with both parameters
-                                    core.provision(jwt, opal)
-                                } catch (e: Exception) {
-                                    Log.w(TAG, "Provision with both params failed, trying with null opal: ${e.message}")
-                                    // Some SDKs might expect null as second parameter instead of omitting it
-                                    try {
-                                        core.provision(jwt, null)
-                                    } catch (e2: Exception) {
-                                        Log.w(TAG, "Provision with null opal failed, trying empty string: ${e2.message}")
-                                        // Try with empty string as fallback
-                                        core.provision(jwt, "")
-                                    }
-                                }
-                                
-                                // Success -> reply on main thread
-                                mainHandler.post { result.success(true) }
-                                return@whenServiceStarted
-                            } catch (e: Exception) {
-                                lastError = e
-                                Log.w(TAG, "Provision attempt ${attempt + 1} failed: ${e.message}")
-                            }
-                            attempt++
+                        val ok = provisionWithRetries(jwt, opal)
+                        if (ok) {
+                            emitEvent("provision_success", mapOf("opal" to opal))
+                            emitProvisionStatus(true, "Provision request accepted")
+                            result.success(true)
+                        } else {
+                            emitEvent("provision_failed", mapOf("error" to "Provision failed after retries"))
+                            emitProvisionStatus(false, "Provision failed after retries")
+                            result.error("provision_error", "Provision failed after retries", null)
                         }
-
-                        val msg = lastError?.message ?: "Unknown provision error"
-                        Log.e(TAG, "Provision error after retries: $msg", lastError)
-                        mainHandler.post { result.error("provision_error", msg, null) }
                     } catch (e: Exception) {
-                        Log.e(TAG, "Provision error (outer): ${e.message}", e)
-                        mainHandler.post { result.error("provision_error", e.message, null) }
+                        Log.e(TAG, "Provision error: ${e.message}", e)
+                        emitEvent("provision_failed", mapOf("error" to (e.message ?: "unknown")))
+                        emitProvisionStatus(false, e.message ?: "Provision error")
+                        result.error("provision_error", e.message, null)
+
                     }
                 }
             }
@@ -832,10 +773,11 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
     }
 
     override fun onListen(args: Any?, sink: EventChannel.EventSink?) {
+        eventSink = sink
         sink?.success(mapOf("event" to "ready", "data" to "Openpath stream connected"))
     }
 
-    override fun onCancel(args: Any?) { }
+    override fun onCancel(args: Any?) { eventSink = null }
 
     // ActivityAware
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {

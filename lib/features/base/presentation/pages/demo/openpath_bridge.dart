@@ -229,11 +229,11 @@ class OpenpathBridge {
     await Future.delayed(const Duration(milliseconds: 3000));
 
     const backoff = <Duration>[
-      Duration(milliseconds: 2000),
-      Duration(milliseconds: 3000),
-      Duration(milliseconds: 5000),
-      Duration(milliseconds: 8000),
-      Duration(milliseconds: 12000),
+      Duration(milliseconds: 200),
+      Duration(milliseconds: 400),
+      Duration(milliseconds: 800),
+      Duration(milliseconds: 1600),
+      Duration(milliseconds: 2400),
     ];
 
     for (int i = 0; i < backoff.length; i++) {

@@ -2,7 +2,7 @@ part of "open_path_imports.dart";
 
 class OpenPathController {
   OpenPathController() {
-    // Listen for native status events from Android (MainActivity.emitProvisionStatus)
+    // Listen for native status events from Android (emitProvisionStatus)
     _channel.setMethodCallHandler((call) async {
       if (call.method != 'provisionStatus') return;
 
@@ -40,9 +40,41 @@ class OpenPathController {
         }
       }
     });
+
+    // Also listen to broadcast events for fine-grained status
+    _eventSub = _events.receiveBroadcastStream().listen((evt) {
+      try {
+        final map = evt is Map
+            ? Map<String, dynamic>.from(evt)
+            : <String, dynamic>{'event': evt.toString()};
+        final name = (map['event'] ?? '').toString();
+        if (name == 'provisioning_started') {
+          isBusy.setValue(true);
+        } else if (name == 'provision_success') {
+          isBusy.setValue(false);
+          final data = map['data'];
+          final parsed =
+              data is Map ? Map<String, dynamic>.from(data) : null;
+          credentialObs.setValue(<String, dynamic>{
+            'provisioned': true,
+            if (parsed != null && parsed['opal'] != null)
+              'opal': parsed['opal'],
+          });
+          errorObs.setValue(null);
+        } else if (name == 'provision_failed') {
+          isBusy.setValue(false);
+          final data = map['data'];
+          final err = (data is Map && data['error'] != null)
+              ? data['error'].toString()
+              : 'Provision failed';
+          errorObs.setValue(err);
+        }
+      } catch (_) {}
+    });
   }
 
   static const _channel = MethodChannel('openpath');
+  static const _events = EventChannel('openpath_events');
 
   /// `null` → not provisioned | non-null → credential details
   ObsValue<Map<String, dynamic>?> credentialObs =
@@ -53,6 +85,8 @@ class OpenPathController {
 
   /// Last error string (shown under the button)
   ObsValue<String?> errorObs = ObsValue<String?>.withInit(null);
+
+  StreamSubscription? _eventSub;
 
   /* ───────────────────────────────── Permissions ───────────────────────── */
   Future<bool> _ensurePermissions() async {
@@ -131,8 +165,8 @@ class OpenPathController {
     }
 
     // Try to extract "credentialId=..." and "type=..." from toString() output
-    final idMatch = RegExp(r'credentialId[:=]\s*([\w-]+)').firstMatch(msg);
-    final typeMatch = RegExp(r'type[:=]\s*([\w-]+)').firstMatch(msg);
+    final idMatch = RegExp(r'credentialId[:\s=]\s*([\w-]+)').firstMatch(msg);
+    final typeMatch = RegExp(r'type[:\s=]\s*([\w-]+)').firstMatch(msg);
 
     if (idMatch != null || typeMatch != null) {
       return <String, dynamic>{

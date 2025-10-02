@@ -34,11 +34,36 @@ class _OpenpathDemoAppState extends State<OpenpathDemoApp> {
   void initState() {
     super.initState();
 
-    _sub = OpenpathBridge.events.listen((event) {
+    _sub = OpenpathBridge.events.listen((event) async {
       setState(() {
         log += '[evt] ${jsonEncode(event)}\n';
         _autoScrollLog();
       });
+
+      final name = event.event;
+      if (name == 'provisioning_started') {
+        if (!mounted) return;
+        setState(() => isProvisioning = true);
+      } else if (name == 'provision_success') {
+        if (!mounted) return;
+        setState(() => isProvisioning = false);
+        // Reflect success in UI
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Provisioned successfully')),
+        );
+        await _refreshProvisionStatus();
+      } else if (name == 'provision_failed') {
+        if (!mounted) return;
+        setState(() => isProvisioning = false);
+        final data = event.data;
+        final msg = (data is Map && data['error'] != null)
+            ? data['error'].toString()
+            : 'Provisioning failed';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: Colors.red),
+        );
+        await _refreshProvisionStatus();
+      }
     });
 
     _refreshPermissionStatus();
