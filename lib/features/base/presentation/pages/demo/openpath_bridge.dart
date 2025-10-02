@@ -119,12 +119,12 @@ class OpenpathBridge {
       _rawEvents.map((m) => OpenpathEvent.fromJson(m));
 
   // ----- Permissions / toggles -----
-  /// ✅ dummy permissions always return ok because v0.5.0 SDK doesn’t handle them
+  /// Request required permissions for OpenPath SDK (Bluetooth, Location, Notifications)
   static Future<bool> requestPermissions() async {
     try {
-      return await _method.invokeMethod<bool>('requestPermissions') ?? true;
+      return await _method.invokeMethod<bool>('requestPermissions') ?? false;
     } catch (_) {
-      return true;
+      return false;
     }
   }
 
@@ -134,13 +134,13 @@ class OpenpathBridge {
         await _method.invokeMethod('getPermissionStatus'),
       );
     } catch (_) {
-      // fallback dummy data
+      // fallback conservative data - assume permissions not granted
       return {
-        'btOn': true,
-        'locationOn': true,
-        'notificationsOn': true,
-        'baseOk': true,
-        'bgOk': true,
+        'btOn': false,
+        'locationOn': false,
+        'notificationsOn': false,
+        'baseOk': false,
+        'bgOk': false,
       };
     }
   }
@@ -179,6 +179,18 @@ class OpenpathBridge {
     String? opal,
     String? deviceToken,
   }) async {
+    // Check permissions first before attempting provision
+    final permissionStatus = await getPermissionStatus();
+    if (!permissionStatus['btOn'] || !permissionStatus['locationOn']) {
+      print("Required permissions not granted - Bluetooth: ${permissionStatus['btOn']}, Location: ${permissionStatus['locationOn']}");
+      // Request permissions if not granted
+      final permissionsGranted = await requestPermissions();
+      if (!permissionsGranted) {
+        print("Failed to obtain required permissions for OpenPath SDK");
+        return false;
+      }
+    }
+
     final args = <String, dynamic>{
       'jwt': jwt.trim(),
       'opal': opal ?? extractOpalFromJwt(jwt),

@@ -25,6 +25,7 @@ class OpenpathService {
   }
 
   static Future<Map<String,dynamic>?> provision(String token) async {
+    // Always check permissions first, regardless of which provision method we use
     if (!await _ensurePermissions()) {
       throw Exception('Permissions denied');
     }
