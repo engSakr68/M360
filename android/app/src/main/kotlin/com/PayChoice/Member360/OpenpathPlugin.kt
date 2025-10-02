@@ -25,9 +25,10 @@ import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.PluginRegistry
 import com.openpath.mobileaccesscore.OpenpathMobileAccessCore
 
-class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChannel.StreamHandler, ActivityAware {
+class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChannel.StreamHandler, ActivityAware, PluginRegistry.RequestPermissionsResultListener {
 
     private lateinit var context: Context
     private lateinit var methodChannel: MethodChannel
@@ -36,6 +37,10 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
     private val TAG = "OpenPathPlugin"
 
     private var activityBinding: ActivityPluginBinding? = null
+    
+    // Permission request handling
+    private var pendingPermissionResult: MethodChannel.Result? = null
+    private val PERMISSION_REQUEST_CODE = 1001
 
     // Start SDK Foreground Service
     private var foregroundServiceStarted: Boolean = false
@@ -236,6 +241,13 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                 val activity = activityBinding?.activity
                 if (activity != null) {
                     try {
+                        // Check if we already have a pending permission request
+                        if (pendingPermissionResult != null) {
+                            Log.w(TAG, "Permission request already in progress")
+                            result.success(false)
+                            return
+                        }
+                        
                         val permissionsToRequest = mutableListOf<String>()
                         
                         // Check and request notification permission (Android 13+)
@@ -274,19 +286,21 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                         
                         if (permissionsToRequest.isNotEmpty()) {
                             Log.d(TAG, "Requesting permissions: ${permissionsToRequest.joinToString(", ")}")
+                            // Store the result callback to be called when permissions are granted/denied
+                            pendingPermissionResult = result
                             ActivityCompat.requestPermissions(
                                 activity,
                                 permissionsToRequest.toTypedArray(),
-                                1001
+                                PERMISSION_REQUEST_CODE
                             )
-                            // Return false initially, will be checked again after user responds
-                            result.success(false)
+                            // Don't call result.success() here - wait for onRequestPermissionsResult
                         } else {
                             Log.d(TAG, "All required permissions already granted")
                             result.success(true)
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to request permissions: ${e.message}", e)
+                        pendingPermissionResult = null
                         result.success(false)
                     }
                 } else {
@@ -550,6 +564,38 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
         }
     }
 
+    // Handle permission request results
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ): Boolean {
+        if (requestCode == PERMISSION_REQUEST_CODE && pendingPermissionResult != null) {
+            try {
+                // Check if all requested permissions were granted
+                val allGranted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+                
+                Log.d(TAG, "Permission result - All granted: $allGranted")
+                for (i in permissions.indices) {
+                    val permission = permissions[i]
+                    val granted = if (i < grantResults.size) grantResults[i] == PackageManager.PERMISSION_GRANTED else false
+                    Log.d(TAG, "Permission $permission: $granted")
+                }
+                
+                // Call the pending result with the outcome
+                pendingPermissionResult?.success(allGranted)
+                pendingPermissionResult = null
+                return true
+            } catch (e: Exception) {
+                Log.e(TAG, "Error handling permission result: ${e.message}", e)
+                pendingPermissionResult?.success(false)
+                pendingPermissionResult = null
+                return false
+            }
+        }
+        return false
+    }
+
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
         methodChannel = MethodChannel(binding.binaryMessenger, "openpath")
@@ -591,6 +637,9 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
         methodChannel.setMethodCallHandler(null)
         eventChannel.setStreamHandler(null)
         
+        // Clear any pending permission result
+        pendingPermissionResult = null
+        
         // Unbind from service if bound
         try {
             if (serviceBound) {
@@ -611,17 +660,23 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
     // ActivityAware
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         this.activityBinding = binding
+        binding.addRequestPermissionsResultListener(this)
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
+        this.activityBinding?.removeRequestPermissionsResultListener(this)
         this.activityBinding = null
     }
 
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
         this.activityBinding = binding
+        binding.addRequestPermissionsResultListener(this)
     }
 
     override fun onDetachedFromActivity() {
+        this.activityBinding?.removeRequestPermissionsResultListener(this)
         this.activityBinding = null
+        // Clear any pending permission result
+        pendingPermissionResult = null
     }
 }

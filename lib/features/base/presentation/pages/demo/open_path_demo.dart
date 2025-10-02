@@ -74,7 +74,25 @@ class _OpenpathDemoAppState extends State<OpenpathDemoApp> {
   }
 
   Future<void> _ensureReady() async {
-    await OpenpathBridge.requestPermissions();
+    setState(() {
+      log += 'Requesting permissions...\n';
+      _autoScrollLog();
+    });
+    
+    final permissionsGranted = await OpenpathBridge.requestPermissions();
+    setState(() {
+      log += 'Permissions granted: $permissionsGranted\n';
+      _autoScrollLog();
+    });
+    
+    if (!permissionsGranted) {
+      setState(() {
+        log += '⚠️ Required permissions not granted. Please enable Bluetooth and Location permissions in settings.\n';
+        _autoScrollLog();
+      });
+      return;
+    }
+    
     await OpenpathBridge.initialize();
     await _refreshPermissionStatus();
   }
@@ -181,6 +199,45 @@ class _OpenpathDemoAppState extends State<OpenpathDemoApp> {
                     txtColor: context.colors.white,
                     textSize: 15.sp,
                     maxHeight: 52.h,
+                  ),
+                  Gaps.vGap16,
+                  
+                  // Permission management buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        child: AppTextButton.maxCustom(
+                          onPressed: () async {
+                            setState(() {
+                              log += 'Manually requesting permissions...\n';
+                              _autoScrollLog();
+                            });
+                            final granted = await OpenpathBridge.requestPermissions();
+                            setState(() {
+                              log += 'Manual permission request result: $granted\n';
+                              _autoScrollLog();
+                            });
+                            await _refreshPermissionStatus();
+                          },
+                          text: 'Request Permissions',
+                          bgColor: context.colors.primary,
+                          txtColor: context.colors.white,
+                          textSize: 12.sp,
+                          maxHeight: 40.h,
+                        ),
+                      ),
+                      Gaps.hGap8,
+                      Expanded(
+                        child: AppTextButton.maxCustom(
+                          onPressed: _refreshPermissionStatus,
+                          text: 'Check Status',
+                          bgColor: context.colors.primary,
+                          txtColor: context.colors.white,
+                          textSize: 12.sp,
+                          maxHeight: 40.h,
+                        ),
+                      ),
+                    ],
                   ),
                   Gaps.vGap16,
 

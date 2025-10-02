@@ -189,6 +189,13 @@ class OpenpathBridge {
         print("Failed to obtain required permissions for OpenPath SDK");
         return false;
       }
+      
+      // Re-check permissions after request to ensure they were actually granted
+      final updatedPermissionStatus = await getPermissionStatus();
+      if (!updatedPermissionStatus['btOn'] || !updatedPermissionStatus['locationOn']) {
+        print("Permissions still not granted after request - Bluetooth: ${updatedPermissionStatus['btOn']}, Location: ${updatedPermissionStatus['locationOn']}");
+        return false;
+      }
     }
 
     final args = <String, dynamic>{
