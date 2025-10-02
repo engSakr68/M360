@@ -18,6 +18,32 @@ class OpenpathEvent {
     );
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      'event': event,
+      'data': _encodeForJson(data),
+    };
+  }
+
+  static dynamic _encodeForJson(dynamic value) {
+    if (value == null || value is num || value is bool || value is String) {
+      return value;
+    }
+    if (value is Map) {
+      return value.map((key, v) => MapEntry(key.toString(), _encodeForJson(v)));
+    }
+    if (value is Iterable) {
+      return value.map(_encodeForJson).toList();
+    }
+    try {
+      final dynamic maybeToJson = (value as dynamic).toJson;
+      if (maybeToJson is Function) {
+        return maybeToJson();
+      }
+    } catch (_) {}
+    return value.toString();
+  }
+
   @override
   String toString() => 'OpenpathEvent(event: $event, data: $data)';
 }
