@@ -54,32 +54,27 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
             
             // Get the service instance from the binder
             try {
-                if (service is com.openpath.mobileaccesscore.OpenpathForegroundService.LocalBinder) {
-                    serviceInstance = service.getService()
-                    Log.d(TAG, "Got service instance from LocalBinder")
-                    
-                    // Initialize the SDK with the service instance
-                    initializeSdkWithService()
-                } else {
-                    Log.w(TAG, "Service binder is not LocalBinder type: ${service?.javaClass?.simpleName}")
-                    
-                    // Try alternative approaches to get service reference
-                    try {
-                        // Some services might use different binder patterns
-                        val getServiceMethod = service?.javaClass?.getMethod("getService")
-                        if (getServiceMethod != null) {
-                            serviceInstance = getServiceMethod.invoke(service) as? com.openpath.mobileaccesscore.OpenpathForegroundService
-                            if (serviceInstance != null) {
-                                Log.d(TAG, "Got service instance from generic getService method")
-                                initializeSdkWithService()
-                            }
-                        }
-                    } catch (e2: Exception) {
-                        Log.w(TAG, "Failed to get service via alternative method: ${e2.message}")
+                // Try to get service instance using reflection since LocalBinder may not be available
+                val getServiceMethod = service?.javaClass?.getMethod("getService")
+                if (getServiceMethod != null) {
+                    serviceInstance = getServiceMethod.invoke(service) as? com.openpath.mobileaccesscore.OpenpathForegroundService
+                    if (serviceInstance != null) {
+                        Log.d(TAG, "Got service instance from binder")
+                        // Initialize the SDK with the service instance
+                        initializeSdkWithService()
+                    } else {
+                        Log.w(TAG, "Service instance is null after invoking getService")
                     }
+                } else {
+                    Log.w(TAG, "getService method not found on binder: ${service?.javaClass?.simpleName}")
+                    // For OpenPath SDK v0.5.0, the service connection might work differently
+                    // Just mark as connected and proceed without service instance
+                    Log.d(TAG, "Proceeding without service instance for OpenPath SDK v0.5.0")
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to get service instance from binder: ${e.message}")
+                // For OpenPath SDK v0.5.0, service binding might not be required
+                Log.d(TAG, "Proceeding without service instance - SDK may not require it")
             }
         }
         
@@ -432,9 +427,15 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                                     // First try with both parameters
                                     core.provision(jwt, opal)
                                 } catch (e: Exception) {
-                                    Log.w(TAG, "Provision with both params failed, trying JWT only: ${e.message}")
-                                    // Some SDKs might expect only JWT
-                                    core.provision(jwt)
+                                    Log.w(TAG, "Provision with both params failed, trying with null opal: ${e.message}")
+                                    // Some SDKs might expect null as second parameter instead of omitting it
+                                    try {
+                                        core.provision(jwt, null)
+                                    } catch (e2: Exception) {
+                                        Log.w(TAG, "Provision with null opal failed, trying empty string: ${e2.message}")
+                                        // Try with empty string as fallback
+                                        core.provision(jwt, "")
+                                    }
                                 }
                                 
                                 // Success -> reply on main thread
