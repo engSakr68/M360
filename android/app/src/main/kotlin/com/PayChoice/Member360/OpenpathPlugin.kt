@@ -209,6 +209,9 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
 
                 whenServiceStarted {
                     try {
+                        // Give the service a brief moment to complete onStart and initialize
+                        // its internals to avoid SDK's "foreground service is null" race.
+                        Thread.sleep(150)
                         val core = OpenpathMobileAccessCore.getInstance()
                         core.provision(jwt, opal)
                         result.success(true)

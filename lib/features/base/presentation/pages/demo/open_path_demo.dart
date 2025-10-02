@@ -74,6 +74,7 @@ class _OpenpathDemoAppState extends State<OpenpathDemoApp> {
 
   Future<void> _ensureReady() async {
     await OpenpathBridge.requestPermissions();
+    await OpenpathBridge.initialize();
     await _refreshPermissionStatus();
   }
 
