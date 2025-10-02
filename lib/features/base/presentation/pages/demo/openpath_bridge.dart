@@ -185,7 +185,18 @@ class OpenpathBridge {
       'deviceToken': deviceToken ?? "flutter-test-device",
     };
 
-    for (int i = 0; i < 3; i++) {
+    // Ensure the SDK foreground service is started before provisioning
+    await initialize();
+    await Future.delayed(const Duration(milliseconds: 200));
+
+    const backoff = <Duration>[
+      Duration(milliseconds: 200),
+      Duration(milliseconds: 400),
+      Duration(milliseconds: 800),
+      Duration(milliseconds: 1600),
+    ];
+
+    for (int i = 0; i < backoff.length; i++) {
       try {
         print("Provision args: $args");
         final ok = await _method.invokeMethod<bool>('provision', args) ?? false;
@@ -193,7 +204,7 @@ class OpenpathBridge {
       } catch (e) {
         print('Provision attempt $i failed: $e');
       }
-      await Future.delayed(const Duration(seconds: 2));
+      await Future.delayed(backoff[i]);
     }
     return false;
   }
@@ -252,7 +263,7 @@ class OpenpathBridge {
   }
 
   // Add `initialize` method here to initialize the SDK
-  Future<bool> initialize() async {
+  static Future<bool> initialize() async {
     try {
       final result = await _method.invokeMethod('initialize');
       return result ?? false;
