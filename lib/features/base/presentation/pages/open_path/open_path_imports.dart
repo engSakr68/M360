@@ -26,6 +26,7 @@ import 'package:member360/core/widgets/app_button.dart';
 import 'package:member360/core/widgets/default_app_bar.dart';
 import 'package:member360/features/base/domain/repositories/base_repository.dart';
 import 'package:member360/openpath/openpath_service.dart';
+import 'package:member360/openpath/openpath_debug_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 part "open_path.dart";

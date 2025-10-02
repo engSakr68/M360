@@ -121,6 +121,25 @@ class _OpenPathPageState extends State<OpenPathPage> {
                       ),
                     ),
             ),
+            
+            Gaps.vGap16,
+            
+            /// ── Debug button ─────────────────────────────────────────────
+            AppTextButton.maxCustom(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const OpenpathDebugScreen(),
+                  ),
+                );
+              },
+              text: 'Debug SDK',
+              bgColor: Colors.grey[600]!,
+              txtColor: theme.white,
+              textSize: 13.sp,
+              maxHeight: 40.h,
+            ),
           ],
         ),
       ),
