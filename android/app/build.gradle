@@ -69,7 +69,7 @@ android {
                           'proguard-conscrypt.pro'
             applicationVariants.all { variant ->
                 variant.outputs.all {
-                    def appName = dartEnvironmentVariables.APP_APP_NAME_EN + "_V_"
+                    def appName = "Member360_V_"
                     def newName = "${appName}${defaultConfig.versionName}_${defaultConfig.versionCode}.apk"
                     outputFileName = newName
                 }
