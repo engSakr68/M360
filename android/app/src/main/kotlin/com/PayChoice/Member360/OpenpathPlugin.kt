@@ -184,10 +184,8 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
 
             "getUserOpal" -> {
                 try {
-                    val core = OpenpathMobileAccessCore.getInstance()
-                    val user = core.user
-                    val opal = user?.opal
-                    result.success(opal)
+                    // Android Openpath SDK may not expose a direct user accessor. Return null for now.
+                    result.success(null)
                 } catch (e: Exception) {
                     Log.w(TAG, "getUserOpal failed: ${e.message}")
                     result.success(null)
