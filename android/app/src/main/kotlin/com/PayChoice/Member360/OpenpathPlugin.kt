@@ -3,6 +3,9 @@ package com.PayChoice.Member360
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.EventChannel
@@ -18,14 +21,47 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
 
     private val TAG = "OpenPathPlugin"
 
+    private fun hasPermission(permission: String): Boolean {
+        return ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun canStartForegroundService(): Boolean {
+        // Android 13+ requires POST_NOTIFICATIONS for foreground service notifications
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (!hasPermission(Manifest.permission.POST_NOTIFICATIONS)) {
+                Log.w(TAG, "Skipping foreground service start: POST_NOTIFICATIONS not granted")
+                return false
+            }
+        }
+        // Android 12+ Bluetooth permissions are required for scanning/connection used by the SDK
+        if (Build.VERSION.SDK_INT >= 31) {
+            val hasScan = hasPermission(Manifest.permission.BLUETOOTH_SCAN)
+            val hasConnect = hasPermission(Manifest.permission.BLUETOOTH_CONNECT)
+            if (!hasScan || !hasConnect) {
+                Log.w(TAG, "Skipping foreground service start: Bluetooth permissions missing (SCAN=$hasScan, CONNECT=$hasConnect)")
+                return false
+            }
+        }
+        // Location often required for BLE scanning on many OEMs
+        val hasFineLocation = hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+        if (!hasFineLocation) {
+            Log.w(TAG, "Skipping foreground service start: ACCESS_FINE_LOCATION not granted")
+            return false
+        }
+        return true
+    }
+
     // Start SDK Foreground Service
-    private fun startSdkForegroundService() {
+    private fun startSdkForegroundService(): Boolean {
         try {
+            if (!canStartForegroundService()) return false
             val intent = Intent(context, com.openpath.mobileaccesscore.OpenpathForegroundService::class.java)
             ContextCompat.startForegroundService(context, intent)
             Log.d(TAG, "ForegroundService started")
+            return true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start ForegroundService: ${e.message}", e)
+            return false
         }
     }
 
@@ -41,8 +77,16 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "initialize" -> {
-                startSdkForegroundService()
-                result.success(true)
+                val started = startSdkForegroundService()
+                if (started) {
+                    result.success(true)
+                } else {
+                    result.error(
+                        "permissions_missing",
+                        "Required runtime permissions not granted. Request notifications, Bluetooth (scan/connect) and fine location, then retry.",
+                        null
+                    )
+                }
             }
 
             "provision" -> {
@@ -55,7 +99,15 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                     return
                 }
 
-                startSdkForegroundService()
+                val started = startSdkForegroundService()
+                if (!started) {
+                    result.error(
+                        "permissions_missing",
+                        "Required runtime permissions not granted. Request notifications, Bluetooth (scan/connect) and fine location, then retry.",
+                        null
+                    )
+                    return
+                }
                 whenServiceStarted {
                     try {
                         val core = OpenpathMobileAccessCore.getInstance()
