@@ -26,6 +26,7 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
     private lateinit var context: Context
     private lateinit var methodChannel: MethodChannel
     private lateinit var eventChannel: EventChannel
+    private var eventSink: EventChannel.EventSink? = null
 
     private val TAG = "OpenPathPlugin"
 
@@ -96,6 +97,28 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
             onReady()
         } catch (e: Exception) {
             Log.e(TAG, "Error executing action after service start: ${e.message}", e)
+        }
+    }
+
+    private fun emitEvent(name: String, data: Any?) {
+        try {
+            eventSink?.success(mapOf("event" to name, "data" to data))
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to emit event ${name}: ${e.message}")
+        }
+    }
+
+    private fun emitProvisionStatus(ok: Boolean, message: String) {
+        try {
+            methodChannel.invokeMethod(
+                "provisionStatus",
+                mapOf(
+                    "ok" to ok,
+                    "message" to message
+                )
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to emit provisionStatus: ${e.message}")
         }
     }
 
@@ -224,16 +247,25 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                     return
                 }
 
+                emitEvent("provisioning_started", System.currentTimeMillis())
+                emitProvisionStatus(true, "provisioning_started")
+
                 whenServiceStarted {
                     try {
                         val ok = provisionWithRetries(jwt, opal)
                         if (ok) {
+                            emitEvent("provision_success", mapOf("opal" to opal))
+                            emitProvisionStatus(true, "Provision request accepted")
                             result.success(true)
                         } else {
+                            emitEvent("provision_failed", mapOf("error" to "Provision failed after retries"))
+                            emitProvisionStatus(false, "Provision failed after retries")
                             result.error("provision_error", "Provision failed after retries", null)
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Provision error: ${e.message}", e)
+                        emitEvent("provision_failed", mapOf("error" to (e.message ?: "unknown")))
+                        emitProvisionStatus(false, e.message ?: "Provision error")
                         result.error("provision_error", e.message, null)
                     }
                 }
@@ -272,10 +304,11 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
     }
 
     override fun onListen(args: Any?, sink: EventChannel.EventSink?) {
+        eventSink = sink
         sink?.success(mapOf("event" to "ready", "data" to "Openpath stream connected"))
     }
 
-    override fun onCancel(args: Any?) { }
+    override fun onCancel(args: Any?) { eventSink = null }
 
     // ActivityAware
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
