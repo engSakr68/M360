@@ -364,8 +364,188 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                     "getUserOpal",
                     "getAvailableMethods",
                     "promptEnableBluetooth",
-                    "openLocationSettings"
+                    "openLocationSettings",
+                    "getServiceStatus",
+                    "getSDKVersion",
+                    "getBluetoothStatus",
+                    "getLocationStatus",
+                    "testBluetoothScanning",
+                    "triggerTestEvent"
                 ))
+            }
+
+            "getServiceStatus" -> {
+                try {
+                    val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                    val isServiceRunning = activityManager.getRunningServices(Integer.MAX_VALUE)
+                        .any { it.service.className == "com.openpath.mobileaccesscore.OpenpathForegroundService" }
+                    
+                    result.success(mapOf(
+                        "isRunning" to isServiceRunning,
+                        "isBound" to serviceBound,
+                        "hasServiceInstance" to (serviceInstance != null),
+                        "foregroundServiceStarted" to foregroundServiceStarted,
+                        "serviceClassName" to "com.openpath.mobileaccesscore.OpenpathForegroundService"
+                    ))
+                } catch (e: Exception) {
+                    result.success(mapOf(
+                        "error" to e.message,
+                        "isRunning" to false,
+                        "isBound" to false,
+                        "hasServiceInstance" to false
+                    ))
+                }
+            }
+
+            "getSDKVersion" -> {
+                try {
+                    val core = OpenpathMobileAccessCore.getInstance()
+                    
+                    // Try to get version information from the SDK
+                    var versionInfo = mutableMapOf<String, Any>()
+                    
+                    try {
+                        val versionMethod = core.javaClass.getMethod("getVersion")
+                        val version = versionMethod.invoke(core)
+                        versionInfo["version"] = version ?: "unknown"
+                    } catch (e: NoSuchMethodException) {
+                        versionInfo["version"] = "method_not_available"
+                    } catch (e: Exception) {
+                        versionInfo["version"] = "error: ${e.message}"
+                    }
+                    
+                    try {
+                        val buildMethod = core.javaClass.getMethod("getBuildInfo")
+                        val buildInfo = buildMethod.invoke(core)
+                        versionInfo["buildInfo"] = buildInfo ?: "unknown"
+                    } catch (e: NoSuchMethodException) {
+                        versionInfo["buildInfo"] = "method_not_available"
+                    } catch (e: Exception) {
+                        versionInfo["buildInfo"] = "error: ${e.message}"
+                    }
+                    
+                    // Add SDK class information
+                    versionInfo["sdkClassName"] = core.javaClass.name
+                    versionInfo["availableMethods"] = core.javaClass.methods.map { it.name }.distinct().sorted()
+                    
+                    result.success(versionInfo)
+                } catch (e: Exception) {
+                    result.success(mapOf(
+                        "error" to e.message,
+                        "sdkAvailable" to false
+                    ))
+                }
+            }
+
+            "getBluetoothStatus" -> {
+                try {
+                    val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+                    val bluetoothStatus = mutableMapOf<String, Any>()
+                    
+                    if (bluetoothAdapter != null) {
+                        bluetoothStatus["adapterAvailable"] = true
+                        bluetoothStatus["enabled"] = bluetoothAdapter.isEnabled
+                        bluetoothStatus["name"] = bluetoothAdapter.name ?: "unknown"
+                        bluetoothStatus["address"] = bluetoothAdapter.address ?: "unknown"
+                        bluetoothStatus["state"] = bluetoothAdapter.state
+                        bluetoothStatus["scanMode"] = bluetoothAdapter.scanMode
+                    } else {
+                        bluetoothStatus["adapterAvailable"] = false
+                        bluetoothStatus["enabled"] = false
+                    }
+                    
+                    // Check Bluetooth permissions
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        bluetoothStatus["scanPermission"] = ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
+                        bluetoothStatus["connectPermission"] = ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+                    } else {
+                        bluetoothStatus["bluetoothPermission"] = ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH) == PackageManager.PERMISSION_GRANTED
+                        bluetoothStatus["bluetoothAdminPermission"] = ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_ADMIN) == PackageManager.PERMISSION_GRANTED
+                    }
+                    
+                    result.success(bluetoothStatus)
+                } catch (e: Exception) {
+                    result.success(mapOf(
+                        "error" to e.message,
+                        "adapterAvailable" to false,
+                        "enabled" to false
+                    ))
+                }
+            }
+
+            "getLocationStatus" -> {
+                try {
+                    val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                    val locationStatus = mutableMapOf<String, Any>()
+                    
+                    locationStatus["gpsEnabled"] = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+                    locationStatus["networkEnabled"] = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+                    locationStatus["passiveEnabled"] = locationManager.isProviderEnabled(LocationManager.PASSIVE_PROVIDER)
+                    
+                    val providers = locationManager.getProviders(true)
+                    locationStatus["enabledProviders"] = providers
+                    
+                    // Check location permissions
+                    locationStatus["fineLocationPermission"] = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    locationStatus["coarseLocationPermission"] = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        locationStatus["backgroundLocationPermission"] = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    }
+                    
+                    result.success(locationStatus)
+                } catch (e: Exception) {
+                    result.success(mapOf(
+                        "error" to e.message,
+                        "gpsEnabled" to false,
+                        "networkEnabled" to false
+                    ))
+                }
+            }
+
+            "testBluetoothScanning" -> {
+                try {
+                    val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+                    if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
+                        result.success(false)
+                        return
+                    }
+                    
+                    // Check if we have the required permissions for Bluetooth scanning
+                    val hasPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
+                    } else {
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH) == PackageManager.PERMISSION_GRANTED &&
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_ADMIN) == PackageManager.PERMISSION_GRANTED
+                    }
+                    
+                    if (!hasPermissions) {
+                        result.success(false)
+                        return
+                    }
+                    
+                    // Test if we can start discovery (this is a basic capability test)
+                    val canStartDiscovery = bluetoothAdapter.isDiscovering || bluetoothAdapter.startDiscovery()
+                    if (bluetoothAdapter.isDiscovering) {
+                        bluetoothAdapter.cancelDiscovery() // Clean up
+                    }
+                    
+                    result.success(canStartDiscovery)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Bluetooth scanning test failed: ${e.message}")
+                    result.success(false)
+                }
+            }
+
+            "triggerTestEvent" -> {
+                try {
+                    // Trigger a test event through the event channel
+                    // This would normally be done through the event sink, but for testing we'll just log it
+                    Log.d(TAG, "Test event triggered from Flutter")
+                    result.success(true)
+                } catch (e: Exception) {
+                    result.success(false)
+                }
             }
 
             "getUserOpal" -> {
