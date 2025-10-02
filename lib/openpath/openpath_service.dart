@@ -4,6 +4,7 @@ import 'package:member360/core/helpers/di.dart';
 import 'package:member360/core/helpers/user_helper_service.dart';
 import 'package:member360/core/http/models/result.dart';
 import 'package:member360/features/base/domain/repositories/base_repository.dart';
+import 'package:member360/features/base/presentation/pages/demo/openpath_bridge.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 class OpenpathService {
@@ -27,8 +28,22 @@ class OpenpathService {
     if (!await _ensurePermissions()) {
       throw Exception('Permissions denied');
     }
-    final res = await _channel.invokeMethod<Map>('provision', {'token': token});
-    return res?.cast<String,dynamic>();
+    
+    // Use the improved bridge for provisioning
+    try {
+      final success = await OpenpathBridge.provisionWhenReady(token);
+      
+      if (success) {
+        return {'success': true, 'message': 'Provisioned successfully'};
+      } else {
+        throw Exception('Provision failed after retries');
+      }
+    } catch (e) {
+      // Fallback to original method if bridge fails
+      print('Bridge provisioning failed, using fallback: $e');
+      final res = await _channel.invokeMethod<Map>('provision', {'token': token});
+      return res?.cast<String,dynamic>();
+    }
   }
 
   static Future<void> unprovision() {

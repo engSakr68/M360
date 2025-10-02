@@ -51,13 +51,76 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             Log.d(TAG, "Service connected: $name")
             serviceBound = true
-            // The service is now connected, we can proceed with operations
+            
+            // Get the service instance from the binder
+            try {
+                if (service is com.openpath.mobileaccesscore.OpenpathForegroundService.LocalBinder) {
+                    serviceInstance = service.getService()
+                    Log.d(TAG, "Got service instance from LocalBinder")
+                    
+                    // Initialize the SDK with the service instance
+                    initializeSdkWithService()
+                } else {
+                    Log.w(TAG, "Service binder is not LocalBinder type: ${service?.javaClass?.simpleName}")
+                    
+                    // Try alternative approaches to get service reference
+                    try {
+                        // Some services might use different binder patterns
+                        val getServiceMethod = service?.javaClass?.getMethod("getService")
+                        if (getServiceMethod != null) {
+                            serviceInstance = getServiceMethod.invoke(service) as? com.openpath.mobileaccesscore.OpenpathForegroundService
+                            if (serviceInstance != null) {
+                                Log.d(TAG, "Got service instance from generic getService method")
+                                initializeSdkWithService()
+                            }
+                        }
+                    } catch (e2: Exception) {
+                        Log.w(TAG, "Failed to get service via alternative method: ${e2.message}")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to get service instance from binder: ${e.message}")
+            }
         }
         
         override fun onServiceDisconnected(name: ComponentName?) {
             Log.d(TAG, "Service disconnected: $name")
             serviceBound = false
             serviceInstance = null
+        }
+    }
+    
+    // Initialize SDK with service reference
+    private fun initializeSdkWithService() {
+        try {
+            val core = OpenpathMobileAccessCore.getInstance()
+            
+            // Try different methods to set the service reference
+            if (serviceInstance != null) {
+                try {
+                    val setServiceMethod = core.javaClass.getMethod("setForegroundService", com.openpath.mobileaccesscore.OpenpathForegroundService::class.java)
+                    setServiceMethod.invoke(core, serviceInstance)
+                    Log.d(TAG, "Successfully set foreground service reference in SDK")
+                } catch (e: NoSuchMethodException) {
+                    // Try alternative method names
+                    try {
+                        val setServiceMethod = core.javaClass.getMethod("setService", com.openpath.mobileaccesscore.OpenpathForegroundService::class.java)
+                        setServiceMethod.invoke(core, serviceInstance)
+                        Log.d(TAG, "Successfully set service reference in SDK using setService")
+                    } catch (e2: NoSuchMethodException) {
+                        // Try with init method that takes service
+                        try {
+                            val initMethod = core.javaClass.getMethod("init", com.openpath.mobileaccesscore.OpenpathForegroundService::class.java)
+                            initMethod.invoke(core, serviceInstance)
+                            Log.d(TAG, "Successfully initialized SDK with service using init")
+                        } catch (e3: NoSuchMethodException) {
+                            Log.w(TAG, "SDK doesn't have expected service setter methods")
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to initialize SDK with service: ${e.message}")
         }
     }
 
@@ -115,12 +178,17 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
             }
             
             // Give the service a moment to start
-            Thread.sleep(500)
+            Thread.sleep(1000)
             
-            // Also try to bind to the service for better communication
+            // Bind to the service for better communication and to get service instance
             try {
-                val bindResult = context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+                val bindResult = context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT)
                 Log.d(TAG, "Service bind result: $bindResult")
+                
+                if (bindResult) {
+                    // Wait a bit for the binding to complete
+                    Thread.sleep(500)
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to bind to service: ${e.message}")
             }
@@ -273,64 +341,102 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                 whenServiceStarted {
                     // This is already running in background executor from whenServiceStarted
                     try {
-                        val backoffsMs = intArrayOf(500, 1000, 2000, 3000, 5000)
+                        val backoffsMs = intArrayOf(1000, 2000, 3000, 5000, 8000)
                         var attempt = 0
                         var lastError: Exception? = null
 
                         while (attempt < backoffsMs.size) {
                             try {
-                                // Wait a bit before each attempt to give SDK service time to initialize
+                                // Wait before each attempt to give SDK service time to initialize
                                 Thread.sleep(backoffsMs[attempt].toLong())
                                 
-                                // Try to get the service instance and ensure it's properly initialized
-                                val serviceIntent = Intent(context, com.openpath.mobileaccesscore.OpenpathForegroundService::class.java)
-                                
-                                // Initialize the core with application context if needed
                                 val core = OpenpathMobileAccessCore.getInstance()
                                 
-                                // Try to initialize the core with context if it has such method
-                                try {
-                                    // Some SDKs require explicit initialization with context
-                                    val initMethod = core.javaClass.getMethod("initialize", Context::class.java)
-                                    initMethod.invoke(core, context.applicationContext)
-                                    Log.d(TAG, "Successfully initialized OpenpathMobileAccessCore with context")
-                                } catch (e: NoSuchMethodException) {
-                                    // Method doesn't exist, that's fine
-                                    Log.d(TAG, "OpenpathMobileAccessCore doesn't have initialize method")
-                                } catch (e: Exception) {
-                                    Log.w(TAG, "Failed to initialize OpenpathMobileAccessCore: ${e.message}")
+                                // Try multiple initialization approaches
+                                var sdkInitialized = false
+                                
+                                // Approach 1: Use service instance if available
+                                if (serviceBound && serviceInstance != null) {
+                                    Log.d(TAG, "Using bound service instance for SDK initialization")
+                                    initializeSdkWithService()
+                                    sdkInitialized = true
+                                } else {
+                                    Log.w(TAG, "Service not bound or instance null, trying alternative approaches")
                                 }
                                 
-                                // Try to set the foreground service reference if the SDK has such method
-                                try {
-                                    val setServiceMethod = core.javaClass.getMethod("setForegroundService", com.openpath.mobileaccesscore.OpenpathForegroundService::class.java)
-                                    if (serviceInstance != null) {
-                                        setServiceMethod.invoke(core, serviceInstance)
-                                        Log.d(TAG, "Successfully set foreground service reference in OpenpathMobileAccessCore")
+                                // Approach 2: Try to initialize with context
+                                if (!sdkInitialized) {
+                                    try {
+                                        val initMethod = core.javaClass.getMethod("initialize", Context::class.java)
+                                        initMethod.invoke(core, context.applicationContext)
+                                        Log.d(TAG, "Initialized SDK with context")
+                                        sdkInitialized = true
+                                    } catch (e: NoSuchMethodException) {
+                                        Log.d(TAG, "SDK doesn't have initialize(Context) method")
+                                    } catch (e: Exception) {
+                                        Log.w(TAG, "Failed to initialize SDK with context: ${e.message}")
                                     }
-                                } catch (e: NoSuchMethodException) {
-                                    Log.d(TAG, "OpenpathMobileAccessCore doesn't have setForegroundService method")
-                                } catch (e: Exception) {
-                                    Log.w(TAG, "Failed to set foreground service in OpenpathMobileAccessCore: ${e.message}")
                                 }
                                 
-                                // Additional check to ensure service is running
+                                // Approach 3: Try init without parameters (SDK might auto-detect service)
+                                if (!sdkInitialized) {
+                                    try {
+                                        val initMethod = core.javaClass.getMethod("init")
+                                        initMethod.invoke(core)
+                                        Log.d(TAG, "Initialized SDK with parameterless init")
+                                        sdkInitialized = true
+                                    } catch (e: NoSuchMethodException) {
+                                        Log.d(TAG, "SDK doesn't have parameterless init method")
+                                    } catch (e: Exception) {
+                                        Log.w(TAG, "Failed to initialize SDK with parameterless init: ${e.message}")
+                                    }
+                                }
+                                
+                                // Approach 4: Try to rebind service if still not initialized
+                                if (!sdkInitialized && (!serviceBound || serviceInstance == null)) {
+                                    Log.w(TAG, "Attempting to rebind service for SDK initialization")
+                                    val serviceIntent = Intent(context, com.openpath.mobileaccesscore.OpenpathForegroundService::class.java)
+                                    try {
+                                        context.bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT)
+                                        Thread.sleep(1500) // Wait for binding
+                                        
+                                        if (serviceBound && serviceInstance != null) {
+                                            initializeSdkWithService()
+                                            sdkInitialized = true
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.w(TAG, "Failed to rebind service: ${e.message}")
+                                    }
+                                }
+                                
+                                // Verify service is still running
                                 val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
                                 val isServiceRunning = activityManager.getRunningServices(Integer.MAX_VALUE)
                                     .any { it.service.className == "com.openpath.mobileaccesscore.OpenpathForegroundService" }
                                 
                                 if (!isServiceRunning) {
-                                    Log.w(TAG, "Foreground service not running, attempting to start again")
+                                    Log.w(TAG, "Service not running, restarting")
+                                    val serviceIntent = Intent(context, com.openpath.mobileaccesscore.OpenpathForegroundService::class.java)
                                     if (isAppInForeground()) {
                                         context.startService(serviceIntent)
                                     } else {
                                         ContextCompat.startForegroundService(context, serviceIntent)
                                     }
-                                    Thread.sleep(1000) // Give service time to start
+                                    Thread.sleep(2000)
                                 }
                                 
                                 Log.d(TAG, "Attempting provision with JWT: ${jwt.take(20)}... and OPAL: ${opal.take(20)}...")
-                                core.provision(jwt, opal)
+                                
+                                // Try provision with different parameter combinations
+                                try {
+                                    // First try with both parameters
+                                    core.provision(jwt, opal)
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Provision with both params failed, trying JWT only: ${e.message}")
+                                    // Some SDKs might expect only JWT
+                                    core.provision(jwt)
+                                }
+                                
                                 // Success -> reply on main thread
                                 mainHandler.post { result.success(true) }
                                 return@whenServiceStarted
