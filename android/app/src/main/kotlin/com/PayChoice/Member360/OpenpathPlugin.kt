@@ -233,38 +233,65 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
             }
 
             "requestPermissions" -> {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    val granted = hasPostNotificationsPermission()
-                    if (!granted) {
-                        val activity = activityBinding?.activity
-                        if (activity != null) {
-                            try {
-                                ActivityCompat.requestPermissions(
-                                    activity,
-                                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
-                                    1001
-                                )
-                            } catch (e: Exception) {
-                                Log.w(TAG, "Failed to request notifications permission, opening settings: ${e.message}")
-                                val intent = Intent().apply {
-                                    action = Settings.ACTION_APP_NOTIFICATION_SETTINGS
-                                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                context.startActivity(intent)
+                val activity = activityBinding?.activity
+                if (activity != null) {
+                    try {
+                        val permissionsToRequest = mutableListOf<String>()
+                        
+                        // Check and request notification permission (Android 13+)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            if (!hasPostNotificationsPermission()) {
+                                permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        }
+                        
+                        // Check and request Bluetooth permissions
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            // Android 12+ Bluetooth permissions
+                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+                                permissionsToRequest.add(Manifest.permission.BLUETOOTH_SCAN)
+                            }
+                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                                permissionsToRequest.add(Manifest.permission.BLUETOOTH_CONNECT)
                             }
                         } else {
-                            val intent = Intent().apply {
-                                action = Settings.ACTION_APP_NOTIFICATION_SETTINGS
-                                putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            // Legacy Bluetooth permissions
+                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH) != PackageManager.PERMISSION_GRANTED) {
+                                permissionsToRequest.add(Manifest.permission.BLUETOOTH)
                             }
-                            context.startActivity(intent)
+                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_ADMIN) != PackageManager.PERMISSION_GRANTED) {
+                                permissionsToRequest.add(Manifest.permission.BLUETOOTH_ADMIN)
+                            }
                         }
+                        
+                        // Check and request location permissions
+                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                            permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION)
+                        }
+                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                            permissionsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+                        }
+                        
+                        if (permissionsToRequest.isNotEmpty()) {
+                            Log.d(TAG, "Requesting permissions: ${permissionsToRequest.joinToString(", ")}")
+                            ActivityCompat.requestPermissions(
+                                activity,
+                                permissionsToRequest.toTypedArray(),
+                                1001
+                            )
+                            // Return false initially, will be checked again after user responds
+                            result.success(false)
+                        } else {
+                            Log.d(TAG, "All required permissions already granted")
+                            result.success(true)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to request permissions: ${e.message}", e)
+                        result.success(false)
                     }
-                    result.success(hasPostNotificationsPermission())
                 } else {
-                    result.success(true)
+                    Log.w(TAG, "No activity available to request permissions")
+                    result.success(false)
                 }
             }
 
@@ -276,21 +303,38 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                     nm?.areNotificationsEnabled() ?: true
                 }
 
+                // Check if Bluetooth is enabled AND permissions are granted
                 val btOn = try {
-                    BluetoothAdapter.getDefaultAdapter()?.isEnabled ?: true
-                } catch (_: Exception) { true }
+                    val bluetoothEnabled = BluetoothAdapter.getDefaultAdapter()?.isEnabled ?: false
+                    val bluetoothPermissionsGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        // Android 12+ permissions
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED &&
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+                    } else {
+                        // Legacy permissions
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH) == PackageManager.PERMISSION_GRANTED &&
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_ADMIN) == PackageManager.PERMISSION_GRANTED
+                    }
+                    bluetoothEnabled && bluetoothPermissionsGranted
+                } catch (_: Exception) { false }
 
+                // Check if location is enabled AND permissions are granted
                 val locationOn = try {
                     val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-                    lm.isProviderEnabled(LocationManager.GPS_PROVIDER) || lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
-                } catch (_: Exception) { true }
+                    val locationEnabled = lm.isProviderEnabled(LocationManager.GPS_PROVIDER) || lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+                    val locationPermissionsGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                                                   ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                    locationEnabled && locationPermissionsGranted
+                } catch (_: Exception) { false }
+
+                Log.d(TAG, "Permission status - Bluetooth: $btOn, Location: $locationOn, Notifications: $notificationsOn")
 
                 result.success(
                     mapOf(
                         "btOn" to btOn,
                         "locationOn" to locationOn,
                         "notificationsOn" to notificationsOn,
-                        "baseOk" to (btOn && notificationsOn),
+                        "baseOk" to (btOn && locationOn && notificationsOn),
                         "bgOk" to true
                     )
                 )
@@ -304,7 +348,9 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                     "requestPermissions",
                     "getPermissionStatus",
                     "getUserOpal",
-                    "getAvailableMethods"
+                    "getAvailableMethods",
+                    "promptEnableBluetooth",
+                    "openLocationSettings"
                 ))
             }
 
@@ -470,6 +516,33 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                     result.success(true)
                 } catch (e: Exception) {
                     result.error("unprovision_error", e.message, null)
+                }
+            }
+
+            "promptEnableBluetooth" -> {
+                try {
+                    val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+                    if (bluetoothAdapter != null && !bluetoothAdapter.isEnabled) {
+                        val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                        enableBtIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(enableBtIntent)
+                    }
+                    result.success(null)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to prompt enable Bluetooth: ${e.message}")
+                    result.success(null)
+                }
+            }
+
+            "openLocationSettings" -> {
+                try {
+                    val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                    result.success(null)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to open location settings: ${e.message}")
+                    result.success(null)
                 }
             }
 
