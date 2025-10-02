@@ -26,7 +26,11 @@ class OpenpathDebugService {
       
       // 4. User OPAL
       final userOpal = await OpenpathBridge.getUserOpal();
+      
+      // Check service readiness
+      final serviceReadiness = await OpenpathBridge.getServiceReadiness();
       status['userOpal'] = userOpal;
+      status['serviceReadiness'] = serviceReadiness;
       
       // 5. Service Status (Android specific)
       try {
