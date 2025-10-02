@@ -99,6 +99,28 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
         }
     }
 
+    private fun provisionWithRetries(jwt: String, opal: String): Boolean {
+        val backoff = arrayOf(200L, 400L, 800L, 1600L, 2400L)
+        for (i in backoff.indices) {
+            try {
+                if (!startSdkForegroundService()) {
+                    Log.w(TAG, "provision attempt ${i}: foreground service not started")
+                }
+                // Give the service a moment to initialize its internal references
+                Thread.sleep(150)
+                val core = OpenpathMobileAccessCore.getInstance()
+                core.provision(jwt, opal)
+                return true
+            } catch (e: Exception) {
+                val msg = e.message ?: ""
+                Log.w(TAG, "Provision attempt ${i} failed: ${msg}")
+                // Retry on likely race condition where foreground service ref is null; otherwise still retry a few times
+            }
+            try { Thread.sleep(backoff[i]) } catch (_: InterruptedException) {}
+        }
+        return false
+    }
+
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "initialize" -> {
@@ -202,19 +224,14 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                     return
                 }
 
-                if (!startSdkForegroundService()) {
-                    result.error("fgs_not_started", "Foreground service not started (likely missing notification permission)", null)
-                    return
-                }
-
                 whenServiceStarted {
                     try {
-                        // Give the service a brief moment to complete onStart and initialize
-                        // its internals to avoid SDK's "foreground service is null" race.
-                        Thread.sleep(150)
-                        val core = OpenpathMobileAccessCore.getInstance()
-                        core.provision(jwt, opal)
-                        result.success(true)
+                        val ok = provisionWithRetries(jwt, opal)
+                        if (ok) {
+                            result.success(true)
+                        } else {
+                            result.error("provision_error", "Provision failed after retries", null)
+                        }
                     } catch (e: Exception) {
                         Log.e(TAG, "Provision error: ${e.message}", e)
                         result.error("provision_error", e.message, null)

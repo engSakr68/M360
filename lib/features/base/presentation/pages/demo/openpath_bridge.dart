@@ -194,6 +194,7 @@ class OpenpathBridge {
       Duration(milliseconds: 400),
       Duration(milliseconds: 800),
       Duration(milliseconds: 1600),
+      Duration(milliseconds: 2400),
     ];
 
     for (int i = 0; i < backoff.length; i++) {
