@@ -186,27 +186,43 @@ class OpenpathBridge {
     };
 
     // Ensure the SDK foreground service is started before provisioning
-    await initialize();
-    await Future.delayed(const Duration(milliseconds: 2000));
+    print("Initializing OpenPath SDK...");
+    final initResult = await initialize();
+    if (!initResult) {
+      print("Failed to initialize OpenPath SDK");
+      return false;
+    }
+    
+    // Give more time for service to fully initialize and bind
+    await Future.delayed(const Duration(milliseconds: 3000));
 
     const backoff = <Duration>[
-      Duration(milliseconds: 1000),
       Duration(milliseconds: 2000),
       Duration(milliseconds: 3000),
       Duration(milliseconds: 5000),
       Duration(milliseconds: 8000),
+      Duration(milliseconds: 12000),
     ];
 
     for (int i = 0; i < backoff.length; i++) {
       try {
-        print("Provision args: $args");
+        print("Provision attempt ${i + 1} with args: $args");
         final ok = await _method.invokeMethod<bool>('provision', args) ?? false;
-        if (ok) return true;
+        if (ok) {
+          print("Provision successful on attempt ${i + 1}");
+          return true;
+        }
       } catch (e) {
-        print('Provision attempt $i failed: $e');
+        print('Provision attempt ${i + 1} failed: $e');
       }
-      await Future.delayed(backoff[i]);
+      
+      if (i < backoff.length - 1) {
+        print("Waiting ${backoff[i].inMilliseconds}ms before retry...");
+        await Future.delayed(backoff[i]);
+      }
     }
+    
+    print("All provision attempts failed");
     return false;
   }
 
