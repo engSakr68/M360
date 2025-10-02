@@ -51,6 +51,9 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
     // Service instance reference for SDK
     private var serviceInstance: com.openpath.mobileaccesscore.OpenpathForegroundService? = null
     private var serviceBound = false
+    private var serviceReady = false
+    private val serviceReadyCallbacks = mutableListOf<() -> Unit>()
+    private val serviceReadyLock = Object()
     
     // Service connection for binding to the foreground service
     private val serviceConnection = object : ServiceConnection {
@@ -82,12 +85,62 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                 // For OpenPath SDK v0.5.0, service binding might not be required
                 Log.d(TAG, "Proceeding without service instance - SDK may not require it")
             }
+            
+            // Wait a bit for service to fully initialize, then mark as ready
+            backgroundExecutor.execute {
+                try {
+                    Thread.sleep(2000) // Give service time to fully initialize
+                    
+                    // Verify the service is actually ready by checking if it's running
+                    val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                    val isServiceRunning = activityManager.getRunningServices(Integer.MAX_VALUE)
+                        .any { it.service.className == "com.openpath.mobileaccesscore.OpenpathForegroundService" }
+                    
+                    if (isServiceRunning) {
+                        synchronized(serviceReadyLock) {
+                            serviceReady = true
+                            Log.d(TAG, "Service is now ready, executing ${serviceReadyCallbacks.size} pending callbacks")
+                            
+                            // Execute all pending callbacks on main thread
+                            mainHandler.post {
+                                val callbacksToExecute = serviceReadyCallbacks.toList()
+                                serviceReadyCallbacks.clear()
+                                
+                                callbacksToExecute.forEach { callback ->
+                                    try {
+                                        callback()
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "Error executing service ready callback: ${e.message}", e)
+                                    }
+                                }
+                            }
+                            
+                            // Emit service ready event
+                            emitEvent("service_ready", mapOf(
+                                "timestamp" to System.currentTimeMillis(),
+                                "serviceBound" to serviceBound,
+                                "hasServiceInstance" to (serviceInstance != null)
+                            ))
+                        }
+                    } else {
+                        Log.w(TAG, "Service connected but not running, will retry readiness check")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in service ready check: ${e.message}", e)
+                }
+            }
         }
         
         override fun onServiceDisconnected(name: ComponentName?) {
             Log.d(TAG, "Service disconnected: $name")
-            serviceBound = false
-            serviceInstance = null
+            synchronized(serviceReadyLock) {
+                serviceBound = false
+                serviceInstance = null
+                serviceReady = false
+            }
+            
+            // Emit service disconnected event
+            emitEvent("service_disconnected", mapOf("timestamp" to System.currentTimeMillis()))
         }
     }
     
@@ -203,27 +256,64 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
         }
     }
 
-    // Enhanced service readiness check
+    // Wait for service ready signal with proper synchronization
+    private fun whenServiceReady(onReady: () -> Unit) {
+        synchronized(serviceReadyLock) {
+            if (serviceReady) {
+                Log.d(TAG, "Service already ready, executing callback immediately")
+                mainHandler.post { onReady() }
+                return
+            }
+            
+            Log.d(TAG, "Service not ready, adding callback to queue")
+            serviceReadyCallbacks.add(onReady)
+        }
+        
+        // Ensure service is started if not already
+        if (!foregroundServiceStarted) {
+            Log.d(TAG, "Service not started, starting now...")
+            startSdkForegroundService()
+        }
+    }
+
+    // Enhanced service readiness check (legacy method for compatibility)
     private fun whenServiceStarted(onReady: () -> Unit) {
         // Give additional time for service to fully initialize
         backgroundExecutor.execute {
             try {
-                Thread.sleep(1000) // Wait for service to be fully ready
+                var attempts = 0
+                val maxAttempts = 3
+                var serviceReady = false
                 
-                // Verify service is running before proceeding
-                val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-                val isServiceRunning = activityManager.getRunningServices(Integer.MAX_VALUE)
-                    .any { it.service.className == "com.openpath.mobileaccesscore.OpenpathForegroundService" }
-                
-                if (isServiceRunning) {
-                    Log.d(TAG, "Service verified as running, proceeding with operation")
-                    onReady()
-                } else {
-                    Log.w(TAG, "Service not running when expected, attempting restart")
-                    startSdkForegroundService()
-                    Thread.sleep(2000) // Give more time after restart
-                    onReady()
+                while (attempts < maxAttempts && !serviceReady) {
+                    attempts++
+                    Log.d(TAG, "Service readiness check attempt $attempts/$maxAttempts")
+                    
+                    Thread.sleep(1000) // Wait for service to be fully ready
+                    
+                    // Verify service is running before proceeding
+                    val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                    val isServiceRunning = activityManager.getRunningServices(Integer.MAX_VALUE)
+                        .any { it.service.className == "com.openpath.mobileaccesscore.OpenpathForegroundService" }
+                    
+                    if (isServiceRunning) {
+                        Log.d(TAG, "Service verified as running on attempt $attempts, proceeding with operation")
+                        serviceReady = true
+                    } else {
+                        Log.w(TAG, "Service not running on attempt $attempts, attempting restart")
+                        foregroundServiceStarted = false
+                        startSdkForegroundService()
+                        Thread.sleep(2000) // Give more time after restart
+                    }
                 }
+                
+                if (serviceReady) {
+                    Log.d(TAG, "Service is ready, executing callback")
+                } else {
+                    Log.w(TAG, "Service readiness could not be verified after $maxAttempts attempts, proceeding anyway")
+                }
+                
+                onReady()
             } catch (e: Exception) {
                 Log.e(TAG, "Error in whenServiceStarted: ${e.message}", e)
                 onReady() // Proceed anyway
@@ -233,23 +323,67 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
 
     private fun emitEvent(name: String, data: Any?) {
         try {
-            eventSink?.success(mapOf("event" to name, "data" to data))
+            // Always ensure event emission happens on the main UI thread
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                // Already on main thread, emit directly
+                try {
+                    eventSink?.success(mapOf("event" to name, "data" to data))
+                    Log.d(TAG, "Emitted event '$name' directly on main thread")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to emit event ${name} on main thread: ${e.message}")
+                }
+            } else {
+                // Not on main thread, post to main thread
+                mainHandler.post {
+                    try {
+                        eventSink?.success(mapOf("event" to name, "data" to data))
+                        Log.d(TAG, "Emitted event '$name' via main thread post")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to emit event ${name} via main thread post: ${e.message}")
+                    }
+                }
+            }
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to emit event ${name}: ${e.message}")
+            Log.e(TAG, "Critical error in emitEvent for ${name}: ${e.message}", e)
         }
     }
 
     private fun emitProvisionStatus(ok: Boolean, message: String) {
         try {
-            methodChannel.invokeMethod(
-                "provisionStatus",
-                mapOf(
-                    "ok" to ok,
-                    "message" to message
-                )
-            )
+            // Always ensure method channel calls happen on the main UI thread
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                // Already on main thread, call directly
+                try {
+                    methodChannel.invokeMethod(
+                        "provisionStatus",
+                        mapOf(
+                            "ok" to ok,
+                            "message" to message
+                        )
+                    )
+                    Log.d(TAG, "Emitted provisionStatus directly on main thread: $message")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to emit provisionStatus on main thread: ${e.message}")
+                }
+            } else {
+                // Not on main thread, post to main thread
+                mainHandler.post {
+                    try {
+                        methodChannel.invokeMethod(
+                            "provisionStatus",
+                            mapOf(
+                                "ok" to ok,
+                                "message" to message
+                            )
+                        )
+                        Log.d(TAG, "Emitted provisionStatus via main thread post: $message")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to emit provisionStatus via main thread post: ${e.message}")
+                    }
+                }
+            }
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to emit provisionStatus: ${e.message}")
+            Log.e(TAG, "Critical error in emitProvisionStatus: ${e.message}", e)
         }
     }
 
@@ -257,21 +391,61 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
         val backoff = arrayOf(200L, 400L, 800L, 1600L, 2400L)
         for (i in backoff.indices) {
             try {
+                // Ensure foreground service is started and ready
                 if (!startSdkForegroundService()) {
-                    Log.w(TAG, "provision attempt ${i}: foreground service not started")
+                    Log.w(TAG, "provision attempt ${i + 1}: foreground service not started")
                 }
-                // Give the service a moment to initialize its internal references
-                Thread.sleep(150)
+                
+                // Give the service more time to initialize its internal references
+                Thread.sleep(500)
+                
+                // Verify service is actually running before attempting provision
+                val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                val isServiceRunning = activityManager.getRunningServices(Integer.MAX_VALUE)
+                    .any { it.service.className == "com.openpath.mobileaccesscore.OpenpathForegroundService" }
+                
+                if (!isServiceRunning) {
+                    Log.w(TAG, "provision attempt ${i + 1}: service not running, retrying...")
+                    continue
+                }
+                
                 val core = OpenpathMobileAccessCore.getInstance()
+                
+                // Try to set service reference if we have it
+                if (serviceInstance != null) {
+                    try {
+                        val setServiceMethod = core.javaClass.getMethod("setForegroundService", com.openpath.mobileaccesscore.OpenpathForegroundService::class.java)
+                        setServiceMethod.invoke(core, serviceInstance)
+                        Log.d(TAG, "Set foreground service reference before provision attempt ${i + 1}")
+                    } catch (e: Exception) {
+                        Log.d(TAG, "Could not set service reference, proceeding anyway: ${e.message}")
+                    }
+                }
+                
+                Log.d(TAG, "Attempting provision ${i + 1} with JWT and OPAL")
                 core.provision(jwt, opal)
+                Log.d(TAG, "Provision attempt ${i + 1} completed successfully")
                 return true
             } catch (e: Exception) {
                 val msg = e.message ?: ""
-                Log.w(TAG, "Provision attempt ${i} failed: ${msg}")
-                // Retry on likely race condition where foreground service ref is null; otherwise still retry a few times
+                Log.w(TAG, "Provision attempt ${i + 1} failed: $msg")
+                
+                // If this is a foreground service null error, try to restart the service
+                if (msg.contains("foreground service is null") || msg.contains("service") && msg.contains("null")) {
+                    Log.d(TAG, "Detected service null error, attempting to restart service")
+                    foregroundServiceStarted = false
+                    startSdkForegroundService()
+                }
             }
-            try { Thread.sleep(backoff[i]) } catch (_: InterruptedException) {}
+            
+            if (i < backoff.size - 1) {
+                try { 
+                    Log.d(TAG, "Waiting ${backoff[i]}ms before retry...")
+                    Thread.sleep(backoff[i]) 
+                } catch (_: InterruptedException) {}
+            }
         }
+        Log.e(TAG, "All ${backoff.size} provision attempts failed")
         return false
     }
 
@@ -411,6 +585,7 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                     "promptEnableBluetooth",
                     "openLocationSettings",
                     "getServiceStatus",
+                    "getServiceReadiness",
                     "getSDKVersion",
                     "getBluetoothStatus",
                     "getLocationStatus",
@@ -435,6 +610,34 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                 } catch (e: Exception) {
                     result.success(mapOf(
                         "error" to e.message,
+                        "isRunning" to false,
+                        "isBound" to false,
+                        "hasServiceInstance" to false
+                    ))
+                }
+            }
+
+            "getServiceReadiness" -> {
+                try {
+                    synchronized(serviceReadyLock) {
+                        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                        val isServiceRunning = activityManager.getRunningServices(Integer.MAX_VALUE)
+                            .any { it.service.className == "com.openpath.mobileaccesscore.OpenpathForegroundService" }
+                        
+                        result.success(mapOf(
+                            "isReady" to serviceReady,
+                            "isRunning" to isServiceRunning,
+                            "isBound" to serviceBound,
+                            "hasServiceInstance" to (serviceInstance != null),
+                            "foregroundServiceStarted" to foregroundServiceStarted,
+                            "pendingCallbacks" to serviceReadyCallbacks.size,
+                            "timestamp" to System.currentTimeMillis()
+                        ))
+                    }
+                } catch (e: Exception) {
+                    result.success(mapOf(
+                        "error" to e.message,
+                        "isReady" to false,
                         "isRunning" to false,
                         "isBound" to false,
                         "hasServiceInstance" to false
@@ -584,11 +787,15 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
 
             "triggerTestEvent" -> {
                 try {
-                    // Trigger a test event through the event channel
-                    // This would normally be done through the event sink, but for testing we'll just log it
-                    Log.d(TAG, "Test event triggered from Flutter")
+                    // Test the threading fixes by emitting events from a background thread
+                    backgroundExecutor.execute {
+                        Log.d(TAG, "Test event triggered from Flutter - running on background thread")
+                        emitEvent("test_event", mapOf("timestamp" to System.currentTimeMillis(), "thread" to Thread.currentThread().name))
+                        emitProvisionStatus(true, "Test event from background thread")
+                    }
                     result.success(true)
                 } catch (e: Exception) {
+                    Log.e(TAG, "Test event failed: ${e.message}", e)
                     result.success(false)
                 }
             }
@@ -616,25 +823,33 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                 emitEvent("provisioning_started", System.currentTimeMillis())
                 emitProvisionStatus(true, "provisioning_started")
 
-                whenServiceStarted {
+                // Use the new service ready signal instead of the legacy method
+                whenServiceReady {
                     // This is already running in background executor from whenServiceStarted
                     try {
                         val ok = provisionWithRetries(jwt, opal)
-                        if (ok) {
-                            emitEvent("provision_success", mapOf("opal" to opal))
-                            emitProvisionStatus(true, "Provision request accepted")
-                            result.success(true)
-                        } else {
-                            emitEvent("provision_failed", mapOf("error" to "Provision failed after retries"))
-                            emitProvisionStatus(false, "Provision failed after retries")
-                            result.error("provision_error", "Provision failed after retries", null)
+                        
+                        // Ensure result callbacks happen on the main UI thread
+                        mainHandler.post {
+                            if (ok) {
+                                emitEvent("provision_success", mapOf("opal" to opal))
+                                emitProvisionStatus(true, "Provision request accepted")
+                                result.success(true)
+                            } else {
+                                emitEvent("provision_failed", mapOf("error" to "Provision failed after retries"))
+                                emitProvisionStatus(false, "Provision failed after retries")
+                                result.error("provision_error", "Provision failed after retries", null)
+                            }
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Provision error: ${e.message}", e)
-                        emitEvent("provision_failed", mapOf("error" to (e.message ?: "unknown")))
-                        emitProvisionStatus(false, e.message ?: "Provision error")
-                        result.error("provision_error", e.message, null)
-
+                        
+                        // Ensure error callbacks happen on the main UI thread
+                        mainHandler.post {
+                            emitEvent("provision_failed", mapOf("error" to (e.message ?: "unknown")))
+                            emitProvisionStatus(false, e.message ?: "Provision error")
+                            result.error("provision_error", e.message, null)
+                        }
                     }
                 }
             }

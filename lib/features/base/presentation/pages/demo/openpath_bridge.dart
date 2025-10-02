@@ -225,8 +225,15 @@ class OpenpathBridge {
       return false;
     }
     
-    // Give more time for service to fully initialize and bind
-    await Future.delayed(const Duration(milliseconds: 3000));
+    // Wait for service to be ready before proceeding with provision
+    print("Waiting for OpenPath service to be ready...");
+    final serviceReady = await waitForServiceReady(timeout: const Duration(seconds: 30));
+    if (!serviceReady) {
+      print("Service did not become ready within timeout");
+      return false;
+    }
+    
+    print("Service is ready, proceeding with provision...");
 
     const backoff = <Duration>[
       Duration(milliseconds: 200),
@@ -319,5 +326,38 @@ class OpenpathBridge {
     } catch (_) {
       return false;
     }
+  }
+
+  // Check service readiness status
+  static Future<Map<String, dynamic>> getServiceReadiness() async {
+    try {
+      return Map<String, dynamic>.from(
+        await _method.invokeMethod('getServiceReadiness'),
+      );
+    } catch (_) {
+      return {
+        'isReady': false,
+        'error': 'Failed to get service readiness',
+      };
+    }
+  }
+
+  // Wait for service to be ready with timeout
+  static Future<bool> waitForServiceReady({Duration timeout = const Duration(seconds: 30)}) async {
+    final stopwatch = Stopwatch()..start();
+    
+    while (stopwatch.elapsed < timeout) {
+      final readiness = await getServiceReadiness();
+      if (readiness['isReady'] == true) {
+        print('Service is ready after ${stopwatch.elapsedMilliseconds}ms');
+        return true;
+      }
+      
+      print('Service not ready yet, waiting... (${stopwatch.elapsedMilliseconds}ms elapsed)');
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+    
+    print('Service readiness timeout after ${timeout.inMilliseconds}ms');
+    return false;
   }
 }
