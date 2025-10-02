@@ -13,6 +13,9 @@ import android.provider.Settings
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import android.os.Handler
+import android.os.Looper
+import java.util.concurrent.Executors
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -33,6 +36,8 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
 
     // Start SDK Foreground Service
     private var foregroundServiceStarted: Boolean = false
+    private val mainHandler: Handler = Handler(Looper.getMainLooper())
+    private val backgroundExecutor = Executors.newSingleThreadExecutor()
 
     private fun hasPostNotificationsPermission(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -90,14 +95,8 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
         }
     }
 
-    // Minimal readiness shim: call immediately after starting the service
-    private fun whenServiceStarted(onReady: () -> Unit) {
-        try {
-            onReady()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error executing action after service start: ${e.message}", e)
-        }
-    }
+    // Minimal readiness shim: execute callback; caller is responsible for backgrounding work
+    private fun whenServiceStarted(onReady: () -> Unit) { onReady() }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
@@ -208,41 +207,36 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                 }
 
                 whenServiceStarted {
-                    try {
-                        // Retry with exponential backoff to avoid race where SDK foreground service is not yet bound
-                        val backoffsMs = intArrayOf(150, 300, 600, 1200)
-                        var attempt = 0
-                        var success = false
-                        var lastError: Exception? = null
+                    // Run retries off the main thread to avoid blocking UI / platform thread
+                    backgroundExecutor.execute {
+                        try {
+                            val backoffsMs = intArrayOf(250, 400, 800, 1600, 3200)
+                            var attempt = 0
+                            var lastError: Exception? = null
 
-                        while (attempt < backoffsMs.size && !success) {
-                            try {
-                                if (attempt > 0) {
-                                    Thread.sleep(backoffsMs[attempt])
-                                } else {
-                                    Thread.sleep(backoffsMs[attempt])
+                            while (attempt < backoffsMs.size) {
+                                try {
+                                    // Wait a bit before each attempt to give SDK service time to initialize
+                                    Thread.sleep(backoffsMs[attempt].toLong())
+                                    val core = OpenpathMobileAccessCore.getInstance()
+                                    core.provision(jwt, opal)
+                                    // Success -> reply on main thread
+                                    mainHandler.post { result.success(true) }
+                                    return@execute
+                                } catch (e: Exception) {
+                                    lastError = e
+                                    Log.w(TAG, "Provision attempt ${attempt + 1} failed: ${e.message}")
                                 }
-                                val core = OpenpathMobileAccessCore.getInstance()
-                                core.provision(jwt, opal)
-                                success = true
-                                break
-                            } catch (e: Exception) {
-                                lastError = e
-                                Log.w(TAG, "Provision attempt ${attempt + 1} failed: ${e.message}")
                                 attempt++
                             }
-                        }
 
-                        if (success) {
-                            result.success(true)
-                        } else {
                             val msg = lastError?.message ?: "Unknown provision error"
                             Log.e(TAG, "Provision error after retries: $msg", lastError)
-                            result.error("provision_error", msg, null)
+                            mainHandler.post { result.error("provision_error", msg, null) }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Provision error (outer): ${e.message}", e)
+                            mainHandler.post { result.error("provision_error", e.message, null) }
                         }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Provision error (outer): ${e.message}", e)
-                        result.error("provision_error", e.message, null)
                     }
                 }
             }
