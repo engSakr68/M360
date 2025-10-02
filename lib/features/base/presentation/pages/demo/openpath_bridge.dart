@@ -226,7 +226,21 @@ class OpenpathBridge {
     }
     
     // Give more time for service to fully initialize and bind
-    await Future.delayed(const Duration(milliseconds: 3000));
+    await Future.delayed(const Duration(milliseconds: 5000));
+    
+    // Verify service status before proceeding
+    try {
+      final serviceStatus = await _method.invokeMethod<Map>('getServiceStatus');
+      final status = Map<String, dynamic>.from(serviceStatus ?? {});
+      print("Service status before provision: $status");
+      
+      if (status['isRunning'] != true) {
+        print("Service not running, waiting longer...");
+        await Future.delayed(const Duration(milliseconds: 3000));
+      }
+    } catch (e) {
+      print("Failed to check service status: $e");
+    }
 
     const backoff = <Duration>[
       Duration(milliseconds: 2000),
@@ -239,13 +253,39 @@ class OpenpathBridge {
     for (int i = 0; i < backoff.length; i++) {
       try {
         print("Provision attempt ${i + 1} with args: $args");
+        
+        // Check service status before each attempt
+        try {
+          final serviceStatus = await _method.invokeMethod<Map>('getServiceStatus');
+          final status = Map<String, dynamic>.from(serviceStatus ?? {});
+          print("Service status for attempt ${i + 1}: $status");
+          
+          if (status['isRunning'] != true) {
+            print("Service not running, reinitializing...");
+            await initialize();
+            await Future.delayed(const Duration(milliseconds: 2000));
+          }
+        } catch (e) {
+          print("Failed to check service status: $e");
+        }
+        
         final ok = await _method.invokeMethod<bool>('provision', args) ?? false;
         if (ok) {
           print("Provision successful on attempt ${i + 1}");
           return true;
+        } else {
+          print("Provision returned false on attempt ${i + 1}");
         }
       } catch (e) {
-        print('Provision attempt ${i + 1} failed: $e');
+        print('Provision attempt ${i + 1} failed with error: $e');
+        
+        // Log additional debug information on error
+        try {
+          final sdkVersion = await _method.invokeMethod<Map>('getSDKVersion');
+          print("SDK Version info: $sdkVersion");
+        } catch (e2) {
+          print("Failed to get SDK version: $e2");
+        }
       }
       
       if (i < backoff.length - 1) {
