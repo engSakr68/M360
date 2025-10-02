@@ -19,6 +19,28 @@ if (!flutterRoot) throw new GradleException(
 def flutterVersionCode = (props['flutter.versionCode'] ?: '1') as int
 def flutterVersionName = props['flutter.versionName'] ?: '1.0'
 
+def dartEnvironmentVariables = [
+        APP_APP_NAME_EN: 'Member360',
+        APP_APP_NAME_AR: 'Member360',
+        APP_ID         : 'com.PayChoice.Member360',
+]
+if (project.hasProperty('dart-defines')) {
+
+    dartEnvironmentVariables = dartEnvironmentVariables + project.property('dart-defines')
+            .split(',')
+            .collectEntries { entry ->
+
+                def pair = new String(entry.decodeBase64(), 'UTF-8').split('=')
+                println "ENV VAR: ${pair.first()} = ${pair.last()}"
+                [(pair.first()): pair.last()]
+            }
+
+//    String encoded = "QVBQX0FQUF9OQU1FX0FSPdij2LPYsyDYr9mK2YE="
+//    def pair = new String(encoded.decodeBase64(), 'UTF-8')
+//    println "AA ${pair}"
+
+}
+
 /* ───────── ANDROID PLUG-INS ───────── */
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
@@ -69,7 +91,7 @@ android {
                           'proguard-conscrypt.pro'
             applicationVariants.all { variant ->
                 variant.outputs.all {
-                    def appName = "Member360_V_"
+                    def appName = dartEnvironmentVariables.APP_APP_NAME_EN +  "_V_"
                     def newName = "${appName}${defaultConfig.versionName}_${defaultConfig.versionCode}.apk"
                     outputFileName = newName
                 }
@@ -88,12 +110,6 @@ android {
     }
 
     flavorDimensions "app"
-    productFlavors {
-        dev   { dimension "app"; applicationId "com.PayChoice.Member360" }
-        prod  { dimension "app"; applicationId "com.PayChoice.Member360" }
-        stage { dimension "app"; applicationId "com.PayChoice.Member360" }
-    }
-
     namespace 'com.PayChoice.Member360'
 }
 

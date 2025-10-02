@@ -267,62 +267,62 @@ class _OpenpathDemoAppState extends State<OpenpathDemoApp> {
                   Gaps.vGap16,
 
                   /// Permission card simplified ✅
-                  StatusCard(
-                    title: 'Permission Status',
-                    children: [
-                      _row('Bluetooth ON', s['btOn'] == true),
-                      _row('Location ON', s['locationOn'] == true),
-                      _row('Notifications ON', s['notificationsOn'] == true),
-                    ],
-                  ),
+                  // StatusCard(
+                  //   title: 'Permission Status',
+                  //   children: [
+                  //     _row('Bluetooth ON', s['btOn'] == true),
+                  //     _row('Location ON', s['locationOn'] == true),
+                  //     _row('Notifications ON', s['notificationsOn'] == true),
+                  //   ],
+                  // ),
                   Gaps.vGap16,
 
-                  if (p != null)
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Provision Status',
-                                style: AppTextStyle.s16_w700(
-                                    color: context.colors.black)),
-                            Gaps.vGap8,
-                            _row('Is Provisioned', p.isProvisioned),
-                            if (p.userOpal != null)
-                              Text('User Opal: ${p.userOpal}',
-                                  style: AppTextStyle.s14_w400(
-                                      color: context.colors.black)),
-                            if (p.error != null)
-                              Text('Error: ${p.error}',
-                                  style: AppTextStyle.s14_w400(
-                                      color: context.colors.secondary)),
-                          ],
-                        ),
-                      ),
-                    ),
+                  // if (p != null)
+                  //   Card(
+                  //     child: Padding(
+                  //       padding: const EdgeInsets.all(12),
+                  //       child: Column(
+                  //         crossAxisAlignment: CrossAxisAlignment.start,
+                  //         children: [
+                  //           Text('Provision Status',
+                  //               style: AppTextStyle.s16_w700(
+                  //                   color: context.colors.black)),
+                  //           Gaps.vGap8,
+                  //           _row('Is Provisioned', p.isProvisioned),
+                  //           if (p.userOpal != null)
+                  //             Text('User Opal: ${p.userOpal}',
+                  //                 style: AppTextStyle.s14_w400(
+                  //                     color: context.colors.black)),
+                  //           if (p.error != null)
+                  //             Text('Error: ${p.error}',
+                  //                 style: AppTextStyle.s14_w400(
+                  //                     color: context.colors.secondary)),
+                  //         ],
+                  //       ),
+                  //     ),
+                  //   ),
                   Gaps.vGap16,
 
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[200],
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: SingleChildScrollView(
-                        controller: _logController,
-                        child: Text(
-                          log,
-                          style: TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 12.sp,
-                            color: Colors.black,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  // Expanded(
+                  //   child: Container(
+                  //     padding: const EdgeInsets.all(8),
+                  //     decoration: BoxDecoration(
+                  //       color: Colors.grey[200],
+                  //       borderRadius: BorderRadius.circular(8),
+                  //     ),
+                  //     child: SingleChildScrollView(
+                  //       controller: _logController,
+                  //       child: Text(
+                  //         log,
+                  //         style: TextStyle(
+                  //           fontFamily: 'monospace',
+                  //           fontSize: 12.sp,
+                  //           color: Colors.black,
+                  //         ),
+                  //       ),
+                  //     ),
+                  //   ),
+                  // ),
                 ],
               ),
       ),
