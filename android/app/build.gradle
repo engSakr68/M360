@@ -89,9 +89,9 @@ android {
 
     flavorDimensions "app"
     productFlavors {
-        dev   { dimension "app"; applicationId "com.PayChoice.Member360" }
+        dev   { dimension "app"; applicationId "com.PayChoice.Member360.dev" }
         prod  { dimension "app"; applicationId "com.PayChoice.Member360" }
-        stage { dimension "app"; applicationId "com.PayChoice.Member360" }
+        stage { dimension "app"; applicationId "com.PayChoice.Member360.stage" }
     }
 
     namespace 'com.PayChoice.Member360'
