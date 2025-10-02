@@ -208,22 +208,39 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
         // Give additional time for service to fully initialize
         backgroundExecutor.execute {
             try {
-                Thread.sleep(1000) // Wait for service to be fully ready
+                var attempts = 0
+                val maxAttempts = 3
+                var serviceReady = false
                 
-                // Verify service is running before proceeding
-                val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-                val isServiceRunning = activityManager.getRunningServices(Integer.MAX_VALUE)
-                    .any { it.service.className == "com.openpath.mobileaccesscore.OpenpathForegroundService" }
-                
-                if (isServiceRunning) {
-                    Log.d(TAG, "Service verified as running, proceeding with operation")
-                    onReady()
-                } else {
-                    Log.w(TAG, "Service not running when expected, attempting restart")
-                    startSdkForegroundService()
-                    Thread.sleep(2000) // Give more time after restart
-                    onReady()
+                while (attempts < maxAttempts && !serviceReady) {
+                    attempts++
+                    Log.d(TAG, "Service readiness check attempt $attempts/$maxAttempts")
+                    
+                    Thread.sleep(1000) // Wait for service to be fully ready
+                    
+                    // Verify service is running before proceeding
+                    val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                    val isServiceRunning = activityManager.getRunningServices(Integer.MAX_VALUE)
+                        .any { it.service.className == "com.openpath.mobileaccesscore.OpenpathForegroundService" }
+                    
+                    if (isServiceRunning) {
+                        Log.d(TAG, "Service verified as running on attempt $attempts, proceeding with operation")
+                        serviceReady = true
+                    } else {
+                        Log.w(TAG, "Service not running on attempt $attempts, attempting restart")
+                        foregroundServiceStarted = false
+                        startSdkForegroundService()
+                        Thread.sleep(2000) // Give more time after restart
+                    }
                 }
+                
+                if (serviceReady) {
+                    Log.d(TAG, "Service is ready, executing callback")
+                } else {
+                    Log.w(TAG, "Service readiness could not be verified after $maxAttempts attempts, proceeding anyway")
+                }
+                
+                onReady()
             } catch (e: Exception) {
                 Log.e(TAG, "Error in whenServiceStarted: ${e.message}", e)
                 onReady() // Proceed anyway
@@ -233,23 +250,37 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
 
     private fun emitEvent(name: String, data: Any?) {
         try {
-            eventSink?.success(mapOf("event" to name, "data" to data))
+            // Ensure event emission happens on the main UI thread
+            mainHandler.post {
+                try {
+                    eventSink?.success(mapOf("event" to name, "data" to data))
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to emit event ${name} on UI thread: ${e.message}")
+                }
+            }
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to emit event ${name}: ${e.message}")
+            Log.w(TAG, "Failed to post event ${name} to UI thread: ${e.message}")
         }
     }
 
     private fun emitProvisionStatus(ok: Boolean, message: String) {
         try {
-            methodChannel.invokeMethod(
-                "provisionStatus",
-                mapOf(
-                    "ok" to ok,
-                    "message" to message
-                )
-            )
+            // Ensure method channel calls happen on the main UI thread
+            mainHandler.post {
+                try {
+                    methodChannel.invokeMethod(
+                        "provisionStatus",
+                        mapOf(
+                            "ok" to ok,
+                            "message" to message
+                        )
+                    )
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to emit provisionStatus on UI thread: ${e.message}")
+                }
+            }
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to emit provisionStatus: ${e.message}")
+            Log.w(TAG, "Failed to post provisionStatus to UI thread: ${e.message}")
         }
     }
 
@@ -257,21 +288,61 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
         val backoff = arrayOf(200L, 400L, 800L, 1600L, 2400L)
         for (i in backoff.indices) {
             try {
+                // Ensure foreground service is started and ready
                 if (!startSdkForegroundService()) {
-                    Log.w(TAG, "provision attempt ${i}: foreground service not started")
+                    Log.w(TAG, "provision attempt ${i + 1}: foreground service not started")
                 }
-                // Give the service a moment to initialize its internal references
-                Thread.sleep(150)
+                
+                // Give the service more time to initialize its internal references
+                Thread.sleep(500)
+                
+                // Verify service is actually running before attempting provision
+                val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                val isServiceRunning = activityManager.getRunningServices(Integer.MAX_VALUE)
+                    .any { it.service.className == "com.openpath.mobileaccesscore.OpenpathForegroundService" }
+                
+                if (!isServiceRunning) {
+                    Log.w(TAG, "provision attempt ${i + 1}: service not running, retrying...")
+                    continue
+                }
+                
                 val core = OpenpathMobileAccessCore.getInstance()
+                
+                // Try to set service reference if we have it
+                if (serviceInstance != null) {
+                    try {
+                        val setServiceMethod = core.javaClass.getMethod("setForegroundService", com.openpath.mobileaccesscore.OpenpathForegroundService::class.java)
+                        setServiceMethod.invoke(core, serviceInstance)
+                        Log.d(TAG, "Set foreground service reference before provision attempt ${i + 1}")
+                    } catch (e: Exception) {
+                        Log.d(TAG, "Could not set service reference, proceeding anyway: ${e.message}")
+                    }
+                }
+                
+                Log.d(TAG, "Attempting provision ${i + 1} with JWT and OPAL")
                 core.provision(jwt, opal)
+                Log.d(TAG, "Provision attempt ${i + 1} completed successfully")
                 return true
             } catch (e: Exception) {
                 val msg = e.message ?: ""
-                Log.w(TAG, "Provision attempt ${i} failed: ${msg}")
-                // Retry on likely race condition where foreground service ref is null; otherwise still retry a few times
+                Log.w(TAG, "Provision attempt ${i + 1} failed: $msg")
+                
+                // If this is a foreground service null error, try to restart the service
+                if (msg.contains("foreground service is null") || msg.contains("service") && msg.contains("null")) {
+                    Log.d(TAG, "Detected service null error, attempting to restart service")
+                    foregroundServiceStarted = false
+                    startSdkForegroundService()
+                }
             }
-            try { Thread.sleep(backoff[i]) } catch (_: InterruptedException) {}
+            
+            if (i < backoff.size - 1) {
+                try { 
+                    Log.d(TAG, "Waiting ${backoff[i]}ms before retry...")
+                    Thread.sleep(backoff[i]) 
+                } catch (_: InterruptedException) {}
+            }
         }
+        Log.e(TAG, "All ${backoff.size} provision attempts failed")
         return false
     }
 
@@ -584,11 +655,15 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
 
             "triggerTestEvent" -> {
                 try {
-                    // Trigger a test event through the event channel
-                    // This would normally be done through the event sink, but for testing we'll just log it
-                    Log.d(TAG, "Test event triggered from Flutter")
+                    // Test the threading fixes by emitting events from a background thread
+                    backgroundExecutor.execute {
+                        Log.d(TAG, "Test event triggered from Flutter - running on background thread")
+                        emitEvent("test_event", mapOf("timestamp" to System.currentTimeMillis(), "thread" to Thread.currentThread().name))
+                        emitProvisionStatus(true, "Test event from background thread")
+                    }
                     result.success(true)
                 } catch (e: Exception) {
+                    Log.e(TAG, "Test event failed: ${e.message}", e)
                     result.success(false)
                 }
             }
@@ -620,21 +695,28 @@ class OpenpathPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChan
                     // This is already running in background executor from whenServiceStarted
                     try {
                         val ok = provisionWithRetries(jwt, opal)
-                        if (ok) {
-                            emitEvent("provision_success", mapOf("opal" to opal))
-                            emitProvisionStatus(true, "Provision request accepted")
-                            result.success(true)
-                        } else {
-                            emitEvent("provision_failed", mapOf("error" to "Provision failed after retries"))
-                            emitProvisionStatus(false, "Provision failed after retries")
-                            result.error("provision_error", "Provision failed after retries", null)
+                        
+                        // Ensure result callbacks happen on the main UI thread
+                        mainHandler.post {
+                            if (ok) {
+                                emitEvent("provision_success", mapOf("opal" to opal))
+                                emitProvisionStatus(true, "Provision request accepted")
+                                result.success(true)
+                            } else {
+                                emitEvent("provision_failed", mapOf("error" to "Provision failed after retries"))
+                                emitProvisionStatus(false, "Provision failed after retries")
+                                result.error("provision_error", "Provision failed after retries", null)
+                            }
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Provision error: ${e.message}", e)
-                        emitEvent("provision_failed", mapOf("error" to (e.message ?: "unknown")))
-                        emitProvisionStatus(false, e.message ?: "Provision error")
-                        result.error("provision_error", e.message, null)
-
+                        
+                        // Ensure error callbacks happen on the main UI thread
+                        mainHandler.post {
+                            emitEvent("provision_failed", mapOf("error" to (e.message ?: "unknown")))
+                            emitProvisionStatus(false, e.message ?: "Provision error")
+                            result.error("provision_error", e.message, null)
+                        }
                     }
                 }
             }
