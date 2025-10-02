@@ -187,14 +187,14 @@ class OpenpathBridge {
 
     // Ensure the SDK foreground service is started before provisioning
     await initialize();
-    await Future.delayed(const Duration(milliseconds: 1200));
+    await Future.delayed(const Duration(milliseconds: 2000));
 
     const backoff = <Duration>[
-      Duration(milliseconds: 800),
-      Duration(milliseconds: 1500),
-      Duration(milliseconds: 2500),
-      Duration(milliseconds: 4000),
-      Duration(milliseconds: 6000),
+      Duration(milliseconds: 1000),
+      Duration(milliseconds: 2000),
+      Duration(milliseconds: 3000),
+      Duration(milliseconds: 5000),
+      Duration(milliseconds: 8000),
     ];
 
     for (int i = 0; i < backoff.length; i++) {
