@@ -181,8 +181,9 @@ class OpenpathBridge {
   }) async {
     // Check permissions first before attempting provision
     final permissionStatus = await getPermissionStatus();
-    if (!permissionStatus['btOn'] || !permissionStatus['locationOn']) {
-      print("Required permissions not granted - Bluetooth: ${permissionStatus['btOn']}, Location: ${permissionStatus['locationOn']}");
+    if (!permissionStatus['baseOk']) {
+      print("Required permissions not granted - Bluetooth: ${permissionStatus['btOn']}, Location: ${permissionStatus['locationOn']}, Notifications: ${permissionStatus['notificationsOn']}");
+      
       // Request permissions if not granted
       final permissionsGranted = await requestPermissions();
       if (!permissionsGranted) {
@@ -192,8 +193,20 @@ class OpenpathBridge {
       
       // Re-check permissions after request to ensure they were actually granted
       final updatedPermissionStatus = await getPermissionStatus();
-      if (!updatedPermissionStatus['btOn'] || !updatedPermissionStatus['locationOn']) {
+      if (!updatedPermissionStatus['baseOk']) {
         print("Permissions still not granted after request - Bluetooth: ${updatedPermissionStatus['btOn']}, Location: ${updatedPermissionStatus['locationOn']}");
+        
+        // Guide user to enable services if needed
+        if (!updatedPermissionStatus['btOn']) {
+          print('Bluetooth not enabled, prompting user');
+          await promptEnableBluetooth();
+        }
+        
+        if (!updatedPermissionStatus['locationOn']) {
+          print('Location not enabled, opening settings');
+          await openLocationSettings();
+        }
+        
         return false;
       }
     }
