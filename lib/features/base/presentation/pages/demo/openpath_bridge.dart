@@ -119,12 +119,12 @@ class OpenpathBridge {
       _rawEvents.map((m) => OpenpathEvent.fromJson(m));
 
   // ----- Permissions / toggles -----
-  /// ✅ dummy permissions always return ok because v0.5.0 SDK doesn’t handle them
+  /// Request required permissions for OpenPath SDK (Bluetooth, Location, Notifications)
   static Future<bool> requestPermissions() async {
     try {
-      return await _method.invokeMethod<bool>('requestPermissions') ?? true;
+      return await _method.invokeMethod<bool>('requestPermissions') ?? false;
     } catch (_) {
-      return true;
+      return false;
     }
   }
 
@@ -134,13 +134,13 @@ class OpenpathBridge {
         await _method.invokeMethod('getPermissionStatus'),
       );
     } catch (_) {
-      // fallback dummy data
+      // fallback conservative data - assume permissions not granted
       return {
-        'btOn': true,
-        'locationOn': true,
-        'notificationsOn': true,
-        'baseOk': true,
-        'bgOk': true,
+        'btOn': false,
+        'locationOn': false,
+        'notificationsOn': false,
+        'baseOk': false,
+        'bgOk': false,
       };
     }
   }
@@ -179,6 +179,38 @@ class OpenpathBridge {
     String? opal,
     String? deviceToken,
   }) async {
+    // Check permissions first before attempting provision
+    final permissionStatus = await getPermissionStatus();
+    if (!permissionStatus['baseOk']) {
+      print("Required permissions not granted - Bluetooth: ${permissionStatus['btOn']}, Location: ${permissionStatus['locationOn']}, Notifications: ${permissionStatus['notificationsOn']}");
+      
+      // Request permissions if not granted
+      final permissionsGranted = await requestPermissions();
+      if (!permissionsGranted) {
+        print("Failed to obtain required permissions for OpenPath SDK");
+        return false;
+      }
+      
+      // Re-check permissions after request to ensure they were actually granted
+      final updatedPermissionStatus = await getPermissionStatus();
+      if (!updatedPermissionStatus['baseOk']) {
+        print("Permissions still not granted after request - Bluetooth: ${updatedPermissionStatus['btOn']}, Location: ${updatedPermissionStatus['locationOn']}");
+        
+        // Guide user to enable services if needed
+        if (!updatedPermissionStatus['btOn']) {
+          print('Bluetooth not enabled, prompting user');
+          await promptEnableBluetooth();
+        }
+        
+        if (!updatedPermissionStatus['locationOn']) {
+          print('Location not enabled, opening settings');
+          await openLocationSettings();
+        }
+        
+        return false;
+      }
+    }
+
     final args = <String, dynamic>{
       'jwt': jwt.trim(),
       'opal': opal ?? extractOpalFromJwt(jwt),
@@ -186,8 +218,15 @@ class OpenpathBridge {
     };
 
     // Ensure the SDK foreground service is started before provisioning
-    await initialize();
-    await Future.delayed(const Duration(milliseconds: 200));
+    print("Initializing OpenPath SDK...");
+    final initResult = await initialize();
+    if (!initResult) {
+      print("Failed to initialize OpenPath SDK");
+      return false;
+    }
+    
+    // Give more time for service to fully initialize and bind
+    await Future.delayed(const Duration(milliseconds: 3000));
 
     const backoff = <Duration>[
       Duration(milliseconds: 200),
@@ -199,14 +238,23 @@ class OpenpathBridge {
 
     for (int i = 0; i < backoff.length; i++) {
       try {
-        print("Provision args: $args");
+        print("Provision attempt ${i + 1} with args: $args");
         final ok = await _method.invokeMethod<bool>('provision', args) ?? false;
-        if (ok) return true;
+        if (ok) {
+          print("Provision successful on attempt ${i + 1}");
+          return true;
+        }
       } catch (e) {
-        print('Provision attempt $i failed: $e');
+        print('Provision attempt ${i + 1} failed: $e');
       }
-      await Future.delayed(backoff[i]);
+      
+      if (i < backoff.length - 1) {
+        print("Waiting ${backoff[i].inMilliseconds}ms before retry...");
+        await Future.delayed(backoff[i]);
+      }
     }
+    
+    print("All provision attempts failed");
     return false;
   }
 

@@ -5,6 +5,13 @@ def props = new Properties()
 def propsFile = rootProject.file('local.properties')
 if (propsFile.exists()) propsFile.withReader('UTF-8') { props.load(it) }
 
+// Load keystore properties
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file('key.properties')
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 def flutterRoot = props['flutter.sdk']
 if (!flutterRoot) throw new GradleException(
         "Flutter SDK not found. Add flutter.sdk to local.properties")
@@ -40,16 +47,37 @@ android {
     kotlinOptions { jvmTarget = '1.8' }
     sourceSets { main.java.srcDirs += 'src/main/kotlin' }
 
+    signingConfigs {
+        release {
+            keyAlias keystoreProperties['keyAlias']
+            keyPassword keystoreProperties['keyPassword']
+            storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
+            storePassword keystoreProperties['storePassword']
+        }
+    }
+
     buildTypes {
         release {
+            // TODO: Add your own signing config for the release build.
+            // Signing with the debug keys for now, so `flutter run --release` works.
+            signingConfig signingConfigs.release
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
                           'proguard-rules.pro',
                           'proguard-openpath.pro',
                           'proguard-conscrypt.pro'
+            applicationVariants.all { variant ->
+                variant.outputs.all {
+                    def appName = "Member360_V_"
+                    def newName = "${appName}${defaultConfig.versionName}_${defaultConfig.versionCode}.apk"
+                    outputFileName = newName
+                }
+            }
         }
-        debug { minifyEnabled false }
+        debug { 
+            minifyEnabled false 
+        }
     }
 
     // Not using Play-Feature Delivery

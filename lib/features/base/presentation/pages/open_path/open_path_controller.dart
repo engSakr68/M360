@@ -92,36 +92,56 @@ class OpenPathController {
   Future<bool> _ensurePermissions() async {
     if (!Platform.isAndroid) return true;
 
-    final sdk = (await DeviceInfoPlugin().androidInfo).version.sdkInt;
-
-    final toRequest = <Permission>[
-      if (sdk >= 31) ...[
-        Permission.bluetoothScan,
-        Permission.bluetoothConnect,
-        // Only if you actually advertise:
-        // Permission.bluetoothAdvertise,
-      ] else ...[
-        // Pre-Android 12 scanning maps to "location when in use"
-        Permission.locationWhenInUse,
-        Permission.bluetooth,
-      ],
-      // Recommended if your SDK shows a foreground notification:
-      Permission.notification,
-    ];
-
-    final statuses = await toRequest.request();
-    final denied = statuses.entries
-        .where((e) => e.value.isDenied || e.value.isPermanentlyDenied)
-        .map((e) => e.key)
-        .toList();
-
-    if (denied.isEmpty) return true;
-
-    // If permanently denied, prompt to Settings (optional)
-    if (denied.any((p) => statuses[p]!.isPermanentlyDenied)) {
-      await openAppSettings();
+    try {
+      // First check current permission status
+      final status = await _channel.invokeMethod<Map>('getPermissionStatus');
+      final permissionStatus = Map<String, dynamic>.from(status ?? {});
+      
+      print('Current permission status: $permissionStatus');
+      
+      // If permissions are already granted, return true
+      if (permissionStatus['baseOk'] == true) {
+        return true;
+      }
+      
+      // Request permissions if not granted
+      final permissionsGranted = await _channel.invokeMethod<bool>('requestPermissions') ?? false;
+      
+      if (!permissionsGranted) {
+        print('Permission request failed or denied');
+        return false;
+      }
+      
+      // Check status again after requesting permissions
+      final newStatus = await _channel.invokeMethod<Map>('getPermissionStatus');
+      final newPermissionStatus = Map<String, dynamic>.from(newStatus ?? {});
+      
+      print('Permission status after request: $newPermissionStatus');
+      
+      // If still not working, guide user to enable services
+      if (newPermissionStatus['baseOk'] != true) {
+        // Check if Bluetooth needs to be enabled
+        if (newPermissionStatus['btOn'] != true) {
+          print('Bluetooth not enabled, prompting user');
+          await _channel.invokeMethod('promptEnableBluetooth');
+          _toastError('Please enable Bluetooth and try again');
+        }
+        
+        // Check if Location needs to be enabled
+        if (newPermissionStatus['locationOn'] != true) {
+          print('Location not enabled, opening settings');
+          await _channel.invokeMethod('openLocationSettings');
+          _toastError('Please enable Location services and try again');
+        }
+        
+        return false;
+      }
+      
+      return true;
+    } catch (e) {
+      print('Failed to request permissions via native plugin: $e');
+      return false;
     }
-    return false;
   }
 
   /// Best-effort parse for credential details from the native message.
@@ -161,7 +181,7 @@ class OpenPathController {
   Future<void> provision(String token) async {
     final ok = await _ensurePermissions();
     if (!ok) {
-      _toastError('Bluetooth permissions denied');
+      _toastError('Required permissions denied. Please grant Bluetooth and Location permissions.');
       return;
     }
 

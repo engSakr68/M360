@@ -21,7 +21,7 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
   FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterError;
-  await OpenpathBridge.instance.initialize(); // Initialize OpenPath SDK here
+  // await OpenpathBridge.instance.initialize(); // Initialize OpenPath SDK here
   getIt.registerSingleton(SharedPreferences.getInstance());
   getIt.registerSingleton(AppRouter());
   await configureDependencies();
