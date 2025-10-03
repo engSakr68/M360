@@ -111,10 +111,22 @@ post_install do |installer|
         PRIVACY_BUNDLE_SRC="${SRCROOT}/url_launcher_ios_privacy.bundle"
         PRIVACY_BUNDLE_DST="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/url_launcher_ios_privacy.bundle"
         
+        # Also try the target-specific directory
+        TARGET_DST="${BUILT_PRODUCTS_DIR}/url_launcher_ios/url_launcher_ios_privacy.bundle"
+        
         if [ -d "${PRIVACY_BUNDLE_SRC}" ]; then
-          echo "Copying privacy bundle from ${PRIVACY_BUNDLE_SRC} to ${PRIVACY_BUNDLE_DST}"
+          echo "Copying privacy bundle from ${PRIVACY_BUNDLE_SRC}"
+          
+          # Copy to frameworks folder
           mkdir -p "${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}"
           cp -R "${PRIVACY_BUNDLE_SRC}" "${PRIVACY_BUNDLE_DST}"
+          echo "✅ Copied to frameworks folder: ${PRIVACY_BUNDLE_DST}"
+          
+          # Copy to target-specific directory
+          mkdir -p "${BUILT_PRODUCTS_DIR}/url_launcher_ios"
+          cp -R "${PRIVACY_BUNDLE_SRC}" "${TARGET_DST}"
+          echo "✅ Copied to target directory: ${TARGET_DST}"
+          
           echo "✅ url_launcher_ios privacy bundle copied successfully"
         else
           echo "⚠️ Privacy bundle not found at ${PRIVACY_BUNDLE_SRC}"
@@ -283,11 +295,21 @@ post_install do |installer|
       # Copy url_launcher_ios privacy bundle
       URL_LAUNCHER_SRC="${SRCROOT}/url_launcher_ios_privacy.bundle"
       URL_LAUNCHER_DST="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/url_launcher_ios_privacy.bundle"
+      URL_LAUNCHER_TARGET_DST="${BUILT_PRODUCTS_DIR}/url_launcher_ios/url_launcher_ios_privacy.bundle"
       
       if [ -d "${URL_LAUNCHER_SRC}" ]; then
         echo "Copying url_launcher_ios privacy bundle..."
+        
+        # Copy to frameworks folder
         mkdir -p "${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}"
         cp -R "${URL_LAUNCHER_SRC}" "${URL_LAUNCHER_DST}"
+        echo "✅ Copied to frameworks folder: ${URL_LAUNCHER_DST}"
+        
+        # Copy to target-specific directory
+        mkdir -p "${BUILT_PRODUCTS_DIR}/url_launcher_ios"
+        cp -R "${URL_LAUNCHER_SRC}" "${URL_LAUNCHER_TARGET_DST}"
+        echo "✅ Copied to target directory: ${URL_LAUNCHER_TARGET_DST}"
+        
         echo "✅ url_launcher_ios privacy bundle copied"
       else
         echo "⚠️ url_launcher_ios privacy bundle not found at ${URL_LAUNCHER_SRC}"
