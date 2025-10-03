@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# Pre-build Privacy Bundle Fix Script
-# This script runs during Xcode build to ensure privacy bundles are available
+# Xcode Build Phase Script for Privacy Bundles
+# This script runs during Xcode build to copy privacy bundles
 
 set -e
 set -u
 set -o pipefail
 
-echo "=== Pre-Build Privacy Bundle Fix ==="
+echo "=== Privacy Bundle Build Phase ==="
 
 # Get build environment variables
 SRCROOT="${SRCROOT:-$(pwd)}"
@@ -64,4 +64,4 @@ for plugin in "${PRIVACY_PLUGINS[@]}"; do
     copy_privacy_bundle "$plugin"
 done
 
-echo "=== Pre-Build Privacy Bundle Fix Complete ==="
+echo "=== Privacy Bundle Build Phase Complete ==="
