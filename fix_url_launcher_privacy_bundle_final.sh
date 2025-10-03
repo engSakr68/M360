@@ -1,22 +1,155 @@
 #!/bin/bash
 
-# Final Fix for url_launcher_ios privacy bundle issue
-# This script ensures the privacy bundle is properly created and accessible during build
+# Comprehensive URL Launcher Privacy Bundle Fix
+# This script fixes the nested bundle structure issue that causes Xcode build failures
 
 set -e
 set -u
 set -o pipefail
 
-echo "🔧 Final Fix for url_launcher_ios privacy bundle issue..."
+echo "🔧 Starting URL Launcher Privacy Bundle Fix..."
 
-# Navigate to the workspace
-cd /workspace
+# Define paths
+IOS_DIR="/workspace/ios"
+BUILD_DIR="${IOS_DIR}/build"
+SRC_PRIVACY_BUNDLE="${IOS_DIR}/url_launcher_ios_privacy.bundle"
+SRC_PRIVACY_FILE="${SRC_PRIVACY_BUNDLE}/url_launcher_ios_privacy"
 
-# Ensure the privacy bundle directory exists in iOS
-mkdir -p ios/url_launcher_ios_privacy.bundle
+echo "📁 Source privacy bundle: ${SRC_PRIVACY_BUNDLE}"
+echo "📄 Source privacy file: ${SRC_PRIVACY_FILE}"
 
-# Create the privacy bundle file with proper content
-cat > ios/url_launcher_ios_privacy.bundle/url_launcher_ios_privacy << 'EOF'
+# Verify source files exist
+if [ ! -d "${SRC_PRIVACY_BUNDLE}" ]; then
+    echo "❌ Source privacy bundle not found: ${SRC_PRIVACY_BUNDLE}"
+    exit 1
+fi
+
+if [ ! -f "${SRC_PRIVACY_FILE}" ]; then
+    echo "❌ Source privacy file not found: ${SRC_PRIVACY_FILE}"
+    exit 1
+fi
+
+echo "✅ Source files verified"
+
+# Function to create proper privacy bundle structure
+create_privacy_bundle() {
+    local target_dir="$1"
+    local bundle_name="url_launcher_ios_privacy.bundle"
+    local privacy_file_name="url_launcher_ios_privacy"
+    
+    echo "🔧 Creating privacy bundle at: ${target_dir}"
+    
+    # Create the bundle directory
+    mkdir -p "${target_dir}/${bundle_name}"
+    
+    # Copy the privacy file directly into the bundle
+    cp "${SRC_PRIVACY_FILE}" "${target_dir}/${bundle_name}/${privacy_file_name}"
+    
+    # Verify the copy
+    if [ -f "${target_dir}/${bundle_name}/${privacy_file_name}" ]; then
+        echo "✅ Created privacy bundle: ${target_dir}/${bundle_name}/${privacy_file_name}"
+    else
+        echo "❌ Failed to create privacy bundle at: ${target_dir}/${bundle_name}/${privacy_file_name}"
+        return 1
+    fi
+}
+
+# Function to clean up nested bundle structures
+clean_nested_bundles() {
+    local base_dir="$1"
+    echo "🧹 Cleaning nested bundle structures in: ${base_dir}"
+    
+    # Find and remove nested bundle directories
+    find "${base_dir}" -type d -name "*_privacy.bundle" -path "*/url_launcher_ios/*" | while read -r nested_bundle; do
+        echo "🗑️ Removing nested bundle: ${nested_bundle}"
+        rm -rf "${nested_bundle}"
+    done
+    
+    # Find and remove nested privacy files
+    find "${base_dir}" -name "url_launcher_ios_privacy" -path "*/url_launcher_ios/*" | while read -r nested_file; do
+        echo "🗑️ Removing nested privacy file: ${nested_file}"
+        rm -f "${nested_file}"
+    done
+}
+
+# Create build directory structure for different configurations
+CONFIGURATIONS=(
+    "Debug-dev-iphonesimulator"
+    "Debug-iphonesimulator" 
+    "Release-iphoneos"
+    "Release-iphonesimulator"
+)
+
+for config in "${CONFIGURATIONS[@]}"; do
+    config_build_dir="${BUILD_DIR}/${config}"
+    
+    if [ -d "${config_build_dir}" ]; then
+        echo "🔧 Processing configuration: ${config}"
+        
+        # Clean up any existing nested structures
+        clean_nested_bundles "${config_build_dir}"
+        
+        # Create proper privacy bundle structure
+        url_launcher_dir="${config_build_dir}/url_launcher_ios"
+        mkdir -p "${url_launcher_dir}"
+        
+        create_privacy_bundle "${url_launcher_dir}"
+        
+        # Also create at the root level for compatibility
+        create_privacy_bundle "${config_build_dir}"
+        
+        echo "✅ Completed configuration: ${config}"
+    else
+        echo "⚠️ Build directory not found: ${config_build_dir}"
+    fi
+done
+
+# Create a pre-build script that will run during Xcode build
+PRE_BUILD_SCRIPT="${IOS_DIR}/pre_build_url_launcher_fix.sh"
+cat > "${PRE_BUILD_SCRIPT}" << 'EOF'
+#!/bin/bash
+
+# Pre-build URL Launcher Privacy Bundle Fix
+# This script runs before each build to ensure proper privacy bundle structure
+
+set -e
+set -u
+set -o pipefail
+
+echo "🔧 Pre-build URL Launcher Privacy Bundle Fix..."
+
+# Get build environment variables
+SRCROOT="${SRCROOT}"
+BUILT_PRODUCTS_DIR="${BUILT_PRODUCTS_DIR}"
+CONFIGURATION_BUILD_DIR="${CONFIGURATION_BUILD_DIR}"
+
+echo "SRCROOT: ${SRCROOT}"
+echo "BUILT_PRODUCTS_DIR: ${BUILT_PRODUCTS_DIR}"
+echo "CONFIGURATION_BUILD_DIR: ${CONFIGURATION_BUILD_DIR}"
+
+# Source privacy bundle path
+SRC_PRIVACY_BUNDLE="${SRCROOT}/url_launcher_ios_privacy.bundle"
+SRC_PRIVACY_FILE="${SRC_PRIVACY_BUNDLE}/url_launcher_ios_privacy"
+
+# Function to create privacy bundle
+create_privacy_bundle() {
+    local target_dir="$1"
+    local bundle_name="url_launcher_ios_privacy.bundle"
+    local privacy_file_name="url_launcher_ios_privacy"
+    
+    echo "🔧 Creating privacy bundle at: ${target_dir}"
+    
+    # Create the bundle directory
+    mkdir -p "${target_dir}/${bundle_name}"
+    
+    # Copy the privacy file
+    if [ -f "${SRC_PRIVACY_FILE}" ]; then
+        cp "${SRC_PRIVACY_FILE}" "${target_dir}/${bundle_name}/${privacy_file_name}"
+        echo "✅ Created privacy bundle: ${target_dir}/${bundle_name}/${privacy_file_name}"
+    else
+        echo "⚠️ Source privacy file not found: ${SRC_PRIVACY_FILE}"
+        # Create minimal privacy bundle
+        cat > "${target_dir}/${bundle_name}/${privacy_file_name}" << 'PRIVACY_EOF'
 {
   "NSPrivacyTracking": false,
   "NSPrivacyCollectedDataTypes": [],
@@ -39,232 +172,50 @@ cat > ios/url_launcher_ios_privacy.bundle/url_launcher_ios_privacy << 'EOF'
     }
   ]
 }
-EOF
-
-echo "✅ Created url_launcher_ios privacy bundle"
-
-# Verify the file was created correctly
-if [ -f "ios/url_launcher_ios_privacy.bundle/url_launcher_ios_privacy" ]; then
-    echo "✅ Privacy bundle file exists and is accessible"
-    echo "📄 Content preview:"
-    head -5 ios/url_launcher_ios_privacy.bundle/url_launcher_ios_privacy
-else
-    echo "❌ Failed to create privacy bundle file"
-    exit 1
-fi
-
-# Create a comprehensive build script that ensures the privacy bundle is available
-cat > ios/ensure_privacy_bundles.sh << 'EOF'
-#!/bin/bash
-
-# Ensure Privacy Bundles Script
-# This script ensures all privacy bundles are available during build
-
-set -e
-set -u
-set -o pipefail
-
-echo "=== Ensuring Privacy Bundles are Available ==="
-
-# Get build environment variables
-SRCROOT="${SRCROOT:-$(pwd)}"
-BUILT_PRODUCTS_DIR="${BUILT_PRODUCTS_DIR:-}"
-CONFIGURATION_BUILD_DIR="${CONFIGURATION_BUILD_DIR:-}"
-
-echo "SRCROOT: $SRCROOT"
-echo "BUILT_PRODUCTS_DIR: $BUILT_PRODUCTS_DIR"
-echo "CONFIGURATION_BUILD_DIR: $CONFIGURATION_BUILD_DIR"
-
-# List of plugins that need privacy bundles
-PRIVACY_PLUGINS=(
-    "image_picker_ios"
-    "url_launcher_ios"
-    "sqflite_darwin"
-    "permission_handler_apple"
-    "shared_preferences_foundation"
-    "share_plus"
-    "path_provider_foundation"
-    "package_info_plus"
-)
-
-# Function to ensure privacy bundle is available
-ensure_privacy_bundle() {
-    local plugin_name="$1"
-    local bundle_dir="$SRCROOT/${plugin_name}_privacy.bundle"
-    local dest_dir="$BUILT_PRODUCTS_DIR/${plugin_name}/${plugin_name}_privacy.bundle"
-    
-    echo "Ensuring privacy bundle for: $plugin_name"
-    
-    if [ -d "$bundle_dir" ]; then
-        # Create destination directory
-        mkdir -p "$(dirname "$dest_dir")"
-        
-        # Copy the bundle
-        cp -R "$bundle_dir" "$dest_dir"
-        echo "✅ Ensured $plugin_name privacy bundle at: $dest_dir"
-        
-        # Verify the copy
-        if [ -f "$dest_dir/${plugin_name}_privacy" ]; then
-            echo "✅ Verified $plugin_name privacy bundle"
-        else
-            echo "❌ Failed to verify $plugin_name privacy bundle"
-            return 1
-        fi
-    else
-        echo "❌ Source bundle not found: $bundle_dir"
-        return 1
-    fi
-}
-
-# Ensure all privacy bundles are available
-for plugin in "${PRIVACY_PLUGINS[@]}"; do
-    ensure_privacy_bundle "$plugin"
-done
-
-echo "=== Privacy Bundles Ensured ==="
-EOF
-
-chmod +x ios/ensure_privacy_bundles.sh
-
-echo "✅ Created comprehensive privacy bundle ensure script"
-
-# Update the Podfile to include a more robust privacy bundle fix
-cat > ios/Podfile.privacy_fix << 'EOF'
-# Add this to the post_install block in your Podfile
-
-# Enhanced Privacy Bundle Fix for url_launcher_ios
-puts "🔧 Setting up enhanced privacy bundle fix for url_launcher_ios..."
-
-# Get the Runner target
-app_target = installer.pods_project.targets.find { |t| t.name == 'Runner' }
-
-if app_target
-  # Remove any existing privacy script phases
-  app_target.shell_script_build_phases.dup.each do |phase|
-    if phase.name && (phase.name.include?('Privacy') || phase.name.include?('privacy'))
-      app_target.build_phases.delete(phase)
-      puts "• Removed existing privacy script phase: #{phase.name}"
-    end
-  end
-
-  # Create an enhanced privacy bundle copy script phase
-  privacy_phase = app_target.new_shell_script_build_phase('[CP] Copy Privacy Bundles (Enhanced)')
-  privacy_phase.shell_path = '/bin/sh'
-  privacy_phase.show_env_vars_in_log = false
-  privacy_phase.shell_script = <<~SCRIPT
-    set -e
-    set -u
-    set -o pipefail
-    
-    echo "=== Enhanced Privacy Bundle Copy ==="
-    
-    SRCROOT="${SRCROOT}"
-    BUILT_PRODUCTS_DIR="${BUILT_PRODUCTS_DIR}"
-    CONFIGURATION_BUILD_DIR="${CONFIGURATION_BUILD_DIR}"
-    
-    echo "SRCROOT: ${SRCROOT}"
-    echo "BUILT_PRODUCTS_DIR: ${BUILT_PRODUCTS_DIR}"
-    echo "CONFIGURATION_BUILD_DIR: ${CONFIGURATION_BUILD_DIR}"
-    
-    # List of plugins that need privacy bundles
-    PRIVACY_PLUGINS=(
-      "image_picker_ios"
-      "url_launcher_ios"
-      "sqflite_darwin"
-      "permission_handler_apple"
-      "shared_preferences_foundation"
-      "share_plus"
-      "path_provider_foundation"
-      "package_info_plus"
-    )
-    
-    # Function to copy privacy bundle
-    copy_privacy_bundle() {
-      local plugin_name="$1"
-      local bundle_dir="${SRCROOT}/${plugin_name}_privacy.bundle"
-      local dest_dir="${BUILT_PRODUCTS_DIR}/${plugin_name}/${plugin_name}_privacy.bundle"
-      
-      echo "Processing privacy bundle for: $plugin_name"
-      
-      if [ -d "$bundle_dir" ]; then
-        # Create destination directory
-        mkdir -p "$(dirname "$dest_dir")"
-        
-        # Copy the bundle
-        cp -R "$bundle_dir" "$dest_dir"
-        echo "✅ Copied $plugin_name privacy bundle to: $dest_dir"
-        
-        # Verify the copy
-        if [ -f "$dest_dir/${plugin_name}_privacy" ]; then
-          echo "✅ Verified $plugin_name privacy bundle copy"
-        else
-          echo "❌ Failed to verify $plugin_name privacy bundle copy"
-          return 1
-        fi
-      else
-        echo "⚠️ $plugin_name privacy bundle not found at $bundle_dir"
-        # Create minimal privacy bundle as fallback
-        mkdir -p "$dest_dir"
-        cat > "$dest_dir/${plugin_name}_privacy" << 'PRIVACY_EOF'
-{
-  "NSPrivacyTracking": false,
-  "NSPrivacyCollectedDataTypes": [],
-  "NSPrivacyAccessedAPITypes": []
-}
 PRIVACY_EOF
-        echo "✅ Created minimal privacy bundle for $plugin_name"
-      fi
-    }
-    
-    # Copy privacy bundles for all plugins
-    for plugin in "${PRIVACY_PLUGINS[@]}"; do
-      copy_privacy_bundle "$plugin"
-    done
-    
-    # Also copy to alternative locations that might be needed
-    if [ -n "${CONFIGURATION_BUILD_DIR}" ] && [ "${CONFIGURATION_BUILD_DIR}" != "${BUILT_PRODUCTS_DIR}" ]; then
-      echo "Also copying to CONFIGURATION_BUILD_DIR: ${CONFIGURATION_BUILD_DIR}"
-      for plugin in "${PRIVACY_PLUGINS[@]}"; do
-        copy_privacy_bundle "$plugin"
-      done
+        echo "✅ Created minimal privacy bundle: ${target_dir}/${bundle_name}/${privacy_file_name}"
     fi
-    
-    echo "=== Enhanced Privacy Bundle Copy Complete ==="
-  SCRIPT
-  
-  # Move this phase to be early in the build process (after dependencies but before compilation)
-  app_target.build_phases.move(privacy_phase, 1)
-  puts "✅ Added enhanced privacy bundle copy phase to Runner target"
-else
-  puts "⚠️ Runner target not found in Pods project"
-end
-EOF
+}
 
-echo "✅ Created Podfile privacy fix snippet"
+# Create privacy bundles in multiple locations for compatibility
+create_privacy_bundle "${BUILT_PRODUCTS_DIR}/url_launcher_ios"
+create_privacy_bundle "${BUILT_PRODUCTS_DIR}"
 
-# Clean and reinstall pods to ensure proper integration
-echo "🧹 Cleaning and reinstalling CocoaPods..."
-cd ios
-rm -rf Pods
-rm -f Podfile.lock
-
-# Install pods (this will trigger the privacy bundle scripts in Podfile)
-echo "📦 Installing CocoaPods dependencies..."
-pod install --repo-update
-
-echo "✅ CocoaPods installation complete"
-
-# Verify the privacy bundle is accessible
-if [ -f "url_launcher_ios_privacy.bundle/url_launcher_ios_privacy" ]; then
-    echo "✅ Privacy bundle accessible from iOS directory"
-else
-    echo "❌ Privacy bundle not found in iOS directory"
-    exit 1
+if [ -n "${CONFIGURATION_BUILD_DIR}" ] && [ "${CONFIGURATION_BUILD_DIR}" != "${BUILT_PRODUCTS_DIR}" ]; then
+    create_privacy_bundle "${CONFIGURATION_BUILD_DIR}/url_launcher_ios"
+    create_privacy_bundle "${CONFIGURATION_BUILD_DIR}"
 fi
 
-echo "🎉 url_launcher_ios privacy bundle fix complete!"
+echo "✅ Pre-build URL Launcher Privacy Bundle Fix Complete"
+EOF
+
+chmod +x "${PRE_BUILD_SCRIPT}"
+echo "✅ Created pre-build script: ${PRE_BUILD_SCRIPT}"
+
+# Update Podfile to include the pre-build script
+PODFILE="${IOS_DIR}/Podfile"
+if [ -f "${PODFILE}" ]; then
+    echo "🔧 Updating Podfile to include pre-build script..."
+    
+    # Check if the pre-build script is already referenced
+    if ! grep -q "pre_build_url_launcher_fix.sh" "${PODFILE}"; then
+        # Add the pre-build script reference to the existing pre-build phase
+        sed -i.bak 's|if \[ -f "\${SRCROOT}/pre_build_privacy_fix.sh" \]; then|if [ -f "${SRCROOT}/pre_build_url_launcher_fix.sh" ]; then\
+        echo "Running URL launcher privacy fix script..."\
+        "${SRCROOT}/pre_build_url_launcher_fix.sh"\
+    elif [ -f "${SRCROOT}/pre_build_privacy_fix.sh" ]; then|' "${PODFILE}"
+        echo "✅ Updated Podfile to include URL launcher pre-build script"
+    else
+        echo "✅ Podfile already includes URL launcher pre-build script"
+    fi
+fi
+
+echo "🎉 URL Launcher Privacy Bundle Fix Complete!"
 echo ""
-echo "Next steps:"
-echo "1. Try building your iOS app again"
-echo "2. The privacy bundle is now properly configured and should be copied during build"
-echo "3. If issues persist, check the build logs for the privacy bundle copy phase"
+echo "📋 Summary:"
+echo "  • Cleaned nested bundle structures"
+echo "  • Created proper privacy bundle structure for all configurations"
+echo "  • Added pre-build script for automatic fix during builds"
+echo "  • Updated Podfile to include the pre-build script"
+echo ""
+echo "🚀 You can now build your iOS app. The privacy bundle will be automatically fixed during the build process."

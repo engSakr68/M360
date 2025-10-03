@@ -100,10 +100,7 @@ post_install do |installer|
       echo "=== Pre-Build Privacy Bundle Fix ==="
       
       # Run the pre-build privacy fix script
-      if [ -f "${SRCROOT}/pre_build_url_launcher_fix.sh" ]; then
-        echo "Running URL launcher privacy fix script..."
-        "${SRCROOT}/pre_build_url_launcher_fix.sh"
-    elif [ -f "${SRCROOT}/pre_build_privacy_fix.sh" ]; then
+      if [ -f "${SRCROOT}/pre_build_privacy_fix.sh" ]; then
         echo "Running pre-build privacy fix script..."
         "${SRCROOT}/pre_build_privacy_fix.sh"
       else
