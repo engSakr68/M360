@@ -1,22 +1,32 @@
 #!/bin/bash
 
-# Pre-build Privacy Bundle Fix Script
-# This script runs during Xcode build to ensure privacy bundles are available
+# Manual Privacy Bundle Copy Script
+# This script manually copies privacy bundles to a specified build directory
 
 set -e
 set -u
 set -o pipefail
 
-echo "=== Pre-Build Privacy Bundle Fix ==="
+echo "=== Manual Privacy Bundle Copy ==="
 
-# Get build environment variables
-SRCROOT="${SRCROOT:-$(pwd)}"
-BUILT_PRODUCTS_DIR="${BUILT_PRODUCTS_DIR:-}"
-CONFIGURATION_BUILD_DIR="${CONFIGURATION_BUILD_DIR:-}"
+# Get the current directory (should be ios/)
+IOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "SRCROOT: $SRCROOT"
-echo "BUILT_PRODUCTS_DIR: $BUILT_PRODUCTS_DIR"
-echo "CONFIGURATION_BUILD_DIR: $CONFIGURATION_BUILD_DIR"
+# Check if build directory is provided as argument
+if [ $# -eq 0 ]; then
+    echo "Usage: $0 <build_directory>"
+    echo "Example: $0 /Volumes/Untitled/member360_wb/build/ios/Debug-dev-iphonesimulator"
+    exit 1
+fi
+
+BUILD_DIR="$1"
+
+if [ ! -d "$BUILD_DIR" ]; then
+    echo "❌ Build directory does not exist: $BUILD_DIR"
+    exit 1
+fi
+
+echo "Build Directory: $BUILD_DIR"
 
 # List of plugins that need privacy bundles
 PRIVACY_PLUGINS=(
@@ -33,14 +43,17 @@ PRIVACY_PLUGINS=(
 # Function to copy privacy bundle
 copy_privacy_bundle() {
     local plugin_name="$1"
-    local bundle_dir="$SRCROOT/${plugin_name}_privacy.bundle"
-    local dest_dir="$BUILT_PRODUCTS_DIR/${plugin_name}/${plugin_name}_privacy.bundle"
+    local bundle_dir="$IOS_DIR/${plugin_name}_privacy.bundle"
+    local dest_dir="$BUILD_DIR/${plugin_name}/${plugin_name}_privacy.bundle"
     
     echo "Processing privacy bundle for: $plugin_name"
     
     if [ -d "$bundle_dir" ]; then
         # Create destination directory
         mkdir -p "$(dirname "$dest_dir")"
+        
+        # Remove existing bundle if it exists
+        rm -rf "$dest_dir"
         
         # Copy the bundle
         cp -R "$bundle_dir" "$dest_dir"
@@ -60,8 +73,10 @@ copy_privacy_bundle() {
 }
 
 # Copy all privacy bundles
+echo "Copying privacy bundles to build directory..."
 for plugin in "${PRIVACY_PLUGINS[@]}"; do
     copy_privacy_bundle "$plugin"
 done
 
-echo "=== Pre-Build Privacy Bundle Fix Complete ==="
+echo "=== Manual Privacy Bundle Copy Complete ==="
+echo "Privacy bundles have been copied to: $BUILD_DIR"

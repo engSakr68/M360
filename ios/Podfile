@@ -18,6 +18,9 @@ end
 require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
 flutter_ios_podfile_setup
 
+# Load the privacy bundle fix script
+require_relative 'post_install_privacy_fix.rb'
+
 # Map the Runner configurations CocoaPods should emit xcconfigs for
 project 'Runner', {
   'Debug'   => :debug,
@@ -126,8 +129,8 @@ post_install do |installer|
   end
   puts "✅ BUILD_LIBRARY_FOR_DISTRIBUTION disabled for all targets"
 
-  # --- PERMANENT PRIVACY BUNDLE FIX ---
-  puts "🔧 Setting up permanent privacy bundle fix..."
+  # --- ENHANCED PRIVACY BUNDLE FIX ---
+  puts "🔧 Setting up enhanced privacy bundle fix..."
   
   # Get the Runner target
   app_target = installer.pods_project.targets.find { |t| t.name == 'Runner' }
@@ -141,8 +144,8 @@ post_install do |installer|
       end
     end
 
-    # Create a comprehensive privacy bundle copy script phase
-    privacy_phase = app_target.new_shell_script_build_phase('[CP] Copy Privacy Bundles (Permanent)')
+    # Create an enhanced privacy bundle copy script phase
+    privacy_phase = app_target.new_shell_script_build_phase('[CP] Copy Privacy Bundles (Enhanced)')
     privacy_phase.shell_path = '/bin/sh'
     privacy_phase.show_env_vars_in_log = false
     privacy_phase.shell_script = <<~SCRIPT
@@ -150,11 +153,16 @@ post_install do |installer|
       set -u
       set -o pipefail
       
-      echo "=== Permanent Privacy Bundle Copy ==="
+      echo "=== Enhanced Privacy Bundle Copy ==="
       
       SRCROOT="${SRCROOT}"
       BUILT_PRODUCTS_DIR="${BUILT_PRODUCTS_DIR}"
       FRAMEWORKS_FOLDER_PATH="${FRAMEWORKS_FOLDER_PATH}"
+      CONFIGURATION_BUILD_DIR="${CONFIGURATION_BUILD_DIR}"
+      
+      echo "SRCROOT: ${SRCROOT}"
+      echo "BUILT_PRODUCTS_DIR: ${BUILT_PRODUCTS_DIR}"
+      echo "CONFIGURATION_BUILD_DIR: ${CONFIGURATION_BUILD_DIR}"
       
       # List of plugins that need privacy bundles
       PRIVACY_PLUGINS=(
@@ -168,57 +176,63 @@ post_install do |installer|
         "package_info_plus"
       )
       
-      # Copy privacy bundles for all plugins
-      for plugin in "${PRIVACY_PLUGINS[@]}"; do
-        echo "Processing privacy bundle for: $plugin"
+      # Function to copy privacy bundle
+      copy_privacy_bundle() {
+        local plugin_name="$1"
+        local bundle_dir="${SRCROOT}/${plugin_name}_privacy.bundle"
+        local dest_dir="${BUILT_PRODUCTS_DIR}/${plugin_name}/${plugin_name}_privacy.bundle"
         
-        PRIVACY_BUNDLE_SRC="${SRCROOT}/${plugin}_privacy.bundle"
-        PRIVACY_BUNDLE_DST="${BUILT_PRODUCTS_DIR}/${plugin}/${plugin}_privacy.bundle"
+        echo "Processing privacy bundle for: $plugin_name"
         
-        # Create the destination directory
-        mkdir -p "${BUILT_PRODUCTS_DIR}/${plugin}"
-        
-        if [ -d "${PRIVACY_BUNDLE_SRC}" ]; then
-          echo "Copying ${plugin} privacy bundle from ${PRIVACY_BUNDLE_SRC}"
-          cp -R "${PRIVACY_BUNDLE_SRC}" "${PRIVACY_BUNDLE_DST}"
-          echo "✅ Copied ${plugin} privacy bundle to: ${PRIVACY_BUNDLE_DST}"
+        if [ -d "$bundle_dir" ]; then
+          # Create destination directory
+          mkdir -p "$(dirname "$dest_dir")"
+          
+          # Copy the bundle
+          cp -R "$bundle_dir" "$dest_dir"
+          echo "✅ Copied $plugin_name privacy bundle to: $dest_dir"
+          
+          # Verify the copy
+          if [ -f "$dest_dir/${plugin_name}_privacy" ]; then
+            echo "✅ Verified $plugin_name privacy bundle copy"
+          else
+            echo "❌ Failed to verify $plugin_name privacy bundle copy"
+            return 1
+          fi
         else
-          echo "⚠️ ${plugin} privacy bundle not found at ${PRIVACY_BUNDLE_SRC}"
+          echo "⚠️ $plugin_name privacy bundle not found at $bundle_dir"
           # Create minimal privacy bundle as fallback
-          mkdir -p "${PRIVACY_BUNDLE_DST}"
-          cat > "${PRIVACY_BUNDLE_DST}/${plugin}_privacy" << 'PRIVACY_EOF'
+          mkdir -p "$dest_dir"
+          cat > "$dest_dir/${plugin_name}_privacy" << 'PRIVACY_EOF'
 {
   "NSPrivacyTracking": false,
   "NSPrivacyCollectedDataTypes": [],
   "NSPrivacyAccessedAPITypes": []
 }
 PRIVACY_EOF
-          echo "✅ Created minimal privacy bundle for ${plugin}"
+          echo "✅ Created minimal privacy bundle for $plugin_name"
         fi
-        
-        # Verify the bundle was created
-        if [ -f "${PRIVACY_BUNDLE_DST}/${plugin}_privacy" ]; then
-          echo "✅ Verified ${plugin} privacy bundle exists"
-        else
-          echo "❌ Failed to create ${plugin} privacy bundle"
-          exit 1
-        fi
-        
-        # Also copy to the frameworks directory if it exists
-        if [ -n "${FRAMEWORKS_FOLDER_PATH}" ]; then
-          FRAMEWORKS_DST="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/${plugin}/${plugin}_privacy.bundle"
-          mkdir -p "$(dirname "${FRAMEWORKS_DST}")"
-          cp -R "${PRIVACY_BUNDLE_DST}" "${FRAMEWORKS_DST}"
-          echo "✅ Also copied ${plugin} privacy bundle to frameworks directory"
-        fi
+      }
+      
+      # Copy privacy bundles for all plugins
+      for plugin in "${PRIVACY_PLUGINS[@]}"; do
+        copy_privacy_bundle "$plugin"
       done
       
-      echo "=== Permanent Privacy Bundle Copy Complete ==="
+      # Also copy to alternative locations that might be needed
+      if [ -n "${CONFIGURATION_BUILD_DIR}" ] && [ "${CONFIGURATION_BUILD_DIR}" != "${BUILT_PRODUCTS_DIR}" ]; then
+        echo "Also copying to CONFIGURATION_BUILD_DIR: ${CONFIGURATION_BUILD_DIR}"
+        for plugin in "${PRIVACY_PLUGINS[@]}"; do
+          copy_privacy_bundle "$plugin"
+        done
+      fi
+      
+      echo "=== Enhanced Privacy Bundle Copy Complete ==="
     SCRIPT
     
     # Move this phase to be early in the build process (after dependencies but before compilation)
     app_target.build_phases.move(privacy_phase, 1)
-    puts "✅ Added permanent privacy bundle copy phase to Runner target"
+    puts "✅ Added enhanced privacy bundle copy phase to Runner target"
   else
     puts "⚠️ Runner target not found in Pods project"
   end
