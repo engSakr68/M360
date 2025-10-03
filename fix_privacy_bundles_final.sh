@@ -1,59 +1,82 @@
 #!/bin/bash
 
-# Final Privacy Bundle Fix Script
-# This script fixes the privacy bundle structure in the build directory
+# Comprehensive Privacy Bundle Fix Script
+# This script fixes the nested privacy bundle structure issue
 
 set -e
 set -u
 set -o pipefail
 
-echo "=== Final Privacy Bundle Fix ==="
+echo "=== Comprehensive Privacy Bundle Fix ==="
 
-# Get the current build directory
-BUILD_DIR="/workspace/ios/build/Debug-dev-iphonesimulator"
-echo "Build directory: $BUILD_DIR"
+# Get build environment variables
+SRCROOT="${SRCROOT:-/workspace/ios}"
+BUILT_PRODUCTS_DIR="${BUILT_PRODUCTS_DIR:-/workspace/ios/build/Debug-dev-iphonesimulator}"
+
+echo "SRCROOT: $SRCROOT"
+echo "BUILT_PRODUCTS_DIR: $BUILT_PRODUCTS_DIR"
 
 # List of plugins that need privacy bundles
 PRIVACY_PLUGINS=(
-    "share_plus"
-    "permission_handler_apple"
     "url_launcher_ios"
     "sqflite_darwin"
+    "permission_handler_apple"
     "shared_preferences_foundation"
+    "path_provider_foundation"
+    "share_plus"
+    "package_info_plus"
+    "image_picker_ios"
 )
 
 # Function to fix privacy bundle structure
 fix_privacy_bundle() {
     local plugin_name="$1"
-    local source_bundle="$BUILD_DIR/${plugin_name}_privacy.bundle"
-    local target_dir="$BUILD_DIR/${plugin_name}/${plugin_name}_privacy.bundle"
+    local plugin_dir="$BUILT_PRODUCTS_DIR/${plugin_name}"
+    local bundle_dir="$plugin_dir/${plugin_name}_privacy.bundle"
+    local nested_bundle_dir="$bundle_dir/${plugin_name}_privacy.bundle"
+    local privacy_file="$bundle_dir/${plugin_name}_privacy"
+    local nested_privacy_file="$nested_bundle_dir/${plugin_name}_privacy"
     
-    echo "Fixing privacy bundle for: $plugin_name"
+    echo "Processing privacy bundle for: $plugin_name"
     
-    # Check if source bundle exists
-    if [ -d "$source_bundle" ]; then
-        echo "Found source bundle: $source_bundle"
+    # Check if the plugin directory exists
+    if [ ! -d "$plugin_dir" ]; then
+        echo "⚠️ Plugin directory not found: $plugin_dir"
+        return 0
+    fi
+    
+    # Check if the bundle directory exists
+    if [ ! -d "$bundle_dir" ]; then
+        echo "⚠️ Bundle directory not found: $bundle_dir"
+        return 0
+    fi
+    
+    # Check if the privacy file exists in the correct location
+    if [ -f "$privacy_file" ]; then
+        echo "✅ Privacy file already in correct location: $privacy_file"
+        return 0
+    fi
+    
+    # Check if there's a nested structure
+    if [ -d "$nested_bundle_dir" ] && [ -f "$nested_privacy_file" ]; then
+        echo "🔧 Found nested structure, fixing..."
         
-        # Create target directory
-        mkdir -p "$(dirname "$target_dir")"
-        
-        # Copy the bundle to the correct location
-        cp -R "$source_bundle" "$target_dir"
-        echo "✅ Copied $plugin_name privacy bundle to: $target_dir"
+        # Copy the privacy file to the correct location
+        cp "$nested_privacy_file" "$privacy_file"
+        echo "✅ Copied privacy file from nested structure: $privacy_file"
         
         # Verify the copy
-        if [ -f "$target_dir/${plugin_name}_privacy" ]; then
-            echo "✅ Verified $plugin_name privacy bundle copy"
+        if [ -f "$privacy_file" ]; then
+            echo "✅ Verified privacy file copy for $plugin_name"
         else
-            echo "❌ Failed to verify $plugin_name privacy bundle copy"
+            echo "❌ Failed to verify privacy file copy for $plugin_name"
             return 1
         fi
     else
-        echo "⚠️ Source bundle not found: $source_bundle"
+        echo "⚠️ No nested structure found for $plugin_name"
         
         # Create minimal privacy bundle as fallback
-        mkdir -p "$target_dir"
-        cat > "$target_dir/${plugin_name}_privacy" << EOF
+        cat > "$privacy_file" << EOF
 {
   "NSPrivacyTracking": false,
   "NSPrivacyCollectedDataTypes": [],
@@ -69,4 +92,4 @@ for plugin in "${PRIVACY_PLUGINS[@]}"; do
     fix_privacy_bundle "$plugin"
 done
 
-echo "=== Final Privacy Bundle Fix Complete ==="
+echo "=== Comprehensive Privacy Bundle Fix Complete ==="

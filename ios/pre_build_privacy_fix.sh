@@ -32,6 +32,7 @@ copy_privacy_bundle() {
     local plugin_name="$1"
     local bundle_dir="$SRCROOT/${plugin_name}_privacy.bundle"
     local dest_dir="$BUILT_PRODUCTS_DIR/${plugin_name}/${plugin_name}_privacy.bundle"
+    local privacy_file="$dest_dir/${plugin_name}_privacy"
     
     echo "Processing privacy bundle for: $plugin_name"
     
@@ -43,8 +44,18 @@ copy_privacy_bundle() {
         cp -R "$bundle_dir" "$dest_dir"
         echo "✅ Copied $plugin_name privacy bundle to: $dest_dir"
         
+        # Fix nested structure if it exists
+        local nested_bundle_dir="$dest_dir/${plugin_name}_privacy.bundle"
+        local nested_privacy_file="$nested_bundle_dir/${plugin_name}_privacy"
+        
+        if [ -d "$nested_bundle_dir" ] && [ -f "$nested_privacy_file" ] && [ ! -f "$privacy_file" ]; then
+            echo "🔧 Fixing nested structure for $plugin_name..."
+            cp "$nested_privacy_file" "$privacy_file"
+            echo "✅ Fixed nested structure for $plugin_name"
+        fi
+        
         # Verify the copy
-        if [ -f "$dest_dir/${plugin_name}_privacy" ]; then
+        if [ -f "$privacy_file" ]; then
             echo "✅ Verified $plugin_name privacy bundle copy"
         else
             echo "❌ Failed to verify $plugin_name privacy bundle copy"
@@ -55,7 +66,7 @@ copy_privacy_bundle() {
         
         # Create minimal privacy bundle as fallback
         mkdir -p "$dest_dir"
-        cat > "$dest_dir/${plugin_name}_privacy" << EOF
+        cat > "$privacy_file" << EOF
 {
   "NSPrivacyTracking": false,
   "NSPrivacyCollectedDataTypes": [],
