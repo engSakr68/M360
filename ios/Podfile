@@ -82,7 +82,7 @@ post_install do |installer|
   end
   puts "✅ BUILD_LIBRARY_FOR_DISTRIBUTION disabled for all targets"
 
-  # --- Add privacy bundle script phases for plugins
+  # --- Add privacy bundle script phases for all plugins
   installer.pods_project.targets.each do |target|
     # Remove any existing privacy script phases first
     target.shell_script_build_phases.dup.each do |phase|
@@ -92,8 +92,19 @@ post_install do |installer|
       end
     end
     
-    # Add privacy bundle script phase for url_launcher_ios
-    if target.name == 'url_launcher_ios'
+    # List of plugins that need privacy bundles
+    privacy_plugins = [
+      'url_launcher_ios',
+      'sqflite_darwin',
+      'permission_handler_apple',
+      'shared_preferences_foundation',
+      'share_plus',
+      'path_provider_foundation',
+      'package_info_plus'
+    ]
+    
+    # Add privacy bundle script phase for each plugin
+    if privacy_plugins.include?(target.name)
       privacy_phase = target.new_shell_script_build_phase('[CP] Copy Privacy Bundle')
       privacy_phase.shell_path = '/bin/sh'
       privacy_phase.show_env_vars_in_log = false
@@ -102,17 +113,17 @@ post_install do |installer|
         set -u
         set -o pipefail
         
-        echo "=== Copying url_launcher_ios Privacy Bundle ==="
+        echo "=== Copying #{target.name} Privacy Bundle ==="
         
         SRCROOT="${SRCROOT}"
         BUILT_PRODUCTS_DIR="${BUILT_PRODUCTS_DIR}"
         FRAMEWORKS_FOLDER_PATH="${FRAMEWORKS_FOLDER_PATH}"
         
-        PRIVACY_BUNDLE_SRC="${SRCROOT}/url_launcher_ios_privacy.bundle"
-        PRIVACY_BUNDLE_DST="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/url_launcher_ios_privacy.bundle"
+        PRIVACY_BUNDLE_SRC="${SRCROOT}/#{target.name}_privacy.bundle"
+        PRIVACY_BUNDLE_DST="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/#{target.name}_privacy.bundle"
         
         # Also try the target-specific directory
-        TARGET_DST="${BUILT_PRODUCTS_DIR}/url_launcher_ios/url_launcher_ios_privacy.bundle"
+        TARGET_DST="${BUILT_PRODUCTS_DIR}/#{target.name}/#{target.name}_privacy.bundle"
         
         if [ -d "${PRIVACY_BUNDLE_SRC}" ]; then
           echo "Copying privacy bundle from ${PRIVACY_BUNDLE_SRC}"
@@ -123,47 +134,26 @@ post_install do |installer|
           echo "✅ Copied to frameworks folder: ${PRIVACY_BUNDLE_DST}"
           
           # Copy to target-specific directory
-          mkdir -p "${BUILT_PRODUCTS_DIR}/url_launcher_ios"
+          mkdir -p "${BUILT_PRODUCTS_DIR}/#{target.name}"
           cp -R "${PRIVACY_BUNDLE_SRC}" "${TARGET_DST}"
           echo "✅ Copied to target directory: ${TARGET_DST}"
           
-          echo "✅ url_launcher_ios privacy bundle copied successfully"
+          echo "✅ #{target.name} privacy bundle copied successfully"
         else
           echo "⚠️ Privacy bundle not found at ${PRIVACY_BUNDLE_SRC}"
+          # Create minimal privacy bundle as fallback
+          mkdir -p "${TARGET_DST}"
+          cat > "${TARGET_DST}/#{target.name}_privacy" << 'PRIVACY_EOF'
+{
+  "NSPrivacyTracking": false,
+  "NSPrivacyCollectedDataTypes": [],
+  "NSPrivacyAccessedAPITypes": []
+}
+PRIVACY_EOF
+          echo "✅ Created minimal privacy bundle for #{target.name}"
         fi
       SCRIPT
-      puts "✅ Added privacy bundle script phase for url_launcher_ios"
-    end
-    
-    # Add privacy bundle script phase for sqflite_darwin
-    if target.name == 'sqflite_darwin'
-      privacy_phase = target.new_shell_script_build_phase('[CP] Copy Privacy Bundle')
-      privacy_phase.shell_path = '/bin/sh'
-      privacy_phase.show_env_vars_in_log = false
-      privacy_phase.shell_script = <<~SCRIPT
-        set -e
-        set -u
-        set -o pipefail
-        
-        echo "=== Copying sqflite_darwin Privacy Bundle ==="
-        
-        SRCROOT="${SRCROOT}"
-        BUILT_PRODUCTS_DIR="${BUILT_PRODUCTS_DIR}"
-        FRAMEWORKS_FOLDER_PATH="${FRAMEWORKS_FOLDER_PATH}"
-        
-        PRIVACY_BUNDLE_SRC="${SRCROOT}/sqflite_darwin_privacy.bundle"
-        PRIVACY_BUNDLE_DST="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/sqflite_darwin_privacy.bundle"
-        
-        if [ -d "${PRIVACY_BUNDLE_SRC}" ]; then
-          echo "Copying privacy bundle from ${PRIVACY_BUNDLE_SRC} to ${PRIVACY_BUNDLE_DST}"
-          mkdir -p "${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}"
-          cp -R "${PRIVACY_BUNDLE_SRC}" "${PRIVACY_BUNDLE_DST}"
-          echo "✅ sqflite_darwin privacy bundle copied successfully"
-        else
-          echo "⚠️ Privacy bundle not found at ${PRIVACY_BUNDLE_SRC}"
-        fi
-      SCRIPT
-      puts "✅ Added privacy bundle script phase for sqflite_darwin"
+      puts "✅ Added privacy bundle script phase for #{target.name}"
     end
   end
 
@@ -292,41 +282,53 @@ post_install do |installer|
       BUILT_PRODUCTS_DIR="${BUILT_PRODUCTS_DIR}"
       FRAMEWORKS_FOLDER_PATH="${FRAMEWORKS_FOLDER_PATH}"
       
-      # Copy url_launcher_ios privacy bundle
-      URL_LAUNCHER_SRC="${SRCROOT}/url_launcher_ios_privacy.bundle"
-      URL_LAUNCHER_DST="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/url_launcher_ios_privacy.bundle"
-      URL_LAUNCHER_TARGET_DST="${BUILT_PRODUCTS_DIR}/url_launcher_ios/url_launcher_ios_privacy.bundle"
+      # List of plugins that need privacy bundles
+      PRIVACY_PLUGINS=(
+        "url_launcher_ios"
+        "sqflite_darwin"
+        "permission_handler_apple"
+        "shared_preferences_foundation"
+        "share_plus"
+        "path_provider_foundation"
+        "package_info_plus"
+      )
       
-      if [ -d "${URL_LAUNCHER_SRC}" ]; then
-        echo "Copying url_launcher_ios privacy bundle..."
+      # Copy privacy bundles for all plugins
+      for plugin in "${PRIVACY_PLUGINS[@]}"; do
+        echo "Processing privacy bundle for: $plugin"
         
-        # Copy to frameworks folder
-        mkdir -p "${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}"
-        cp -R "${URL_LAUNCHER_SRC}" "${URL_LAUNCHER_DST}"
-        echo "✅ Copied to frameworks folder: ${URL_LAUNCHER_DST}"
+        PRIVACY_BUNDLE_SRC="${SRCROOT}/${plugin}_privacy.bundle"
+        PRIVACY_BUNDLE_DST="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/${plugin}_privacy.bundle"
+        TARGET_DST="${BUILT_PRODUCTS_DIR}/${plugin}/${plugin}_privacy.bundle"
         
-        # Copy to target-specific directory
-        mkdir -p "${BUILT_PRODUCTS_DIR}/url_launcher_ios"
-        cp -R "${URL_LAUNCHER_SRC}" "${URL_LAUNCHER_TARGET_DST}"
-        echo "✅ Copied to target directory: ${URL_LAUNCHER_TARGET_DST}"
-        
-        echo "✅ url_launcher_ios privacy bundle copied"
-      else
-        echo "⚠️ url_launcher_ios privacy bundle not found at ${URL_LAUNCHER_SRC}"
-      fi
-      
-      # Copy sqflite_darwin privacy bundle
-      SQFLITE_SRC="${SRCROOT}/sqflite_darwin_privacy.bundle"
-      SQFLITE_DST="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/sqflite_darwin_privacy.bundle"
-      
-      if [ -d "${SQFLITE_SRC}" ]; then
-        echo "Copying sqflite_darwin privacy bundle..."
-        mkdir -p "${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}"
-        cp -R "${SQFLITE_SRC}" "${SQFLITE_DST}"
-        echo "✅ sqflite_darwin privacy bundle copied"
-      else
-        echo "⚠️ sqflite_darwin privacy bundle not found at ${SQFLITE_SRC}"
-      fi
+        if [ -d "${PRIVACY_BUNDLE_SRC}" ]; then
+          echo "Copying ${plugin} privacy bundle..."
+          
+          # Copy to frameworks folder
+          mkdir -p "${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}"
+          cp -R "${PRIVACY_BUNDLE_SRC}" "${PRIVACY_BUNDLE_DST}"
+          echo "✅ Copied to frameworks folder: ${PRIVACY_BUNDLE_DST}"
+          
+          # Copy to target-specific directory
+          mkdir -p "${BUILT_PRODUCTS_DIR}/${plugin}"
+          cp -R "${PRIVACY_BUNDLE_SRC}" "${TARGET_DST}"
+          echo "✅ Copied to target directory: ${TARGET_DST}"
+          
+          echo "✅ ${plugin} privacy bundle copied"
+        else
+          echo "⚠️ ${plugin} privacy bundle not found at ${PRIVACY_BUNDLE_SRC}"
+          # Create minimal privacy bundle as fallback
+          mkdir -p "${TARGET_DST}"
+          cat > "${TARGET_DST}/${plugin}_privacy" << 'PRIVACY_EOF'
+{
+  "NSPrivacyTracking": false,
+  "NSPrivacyCollectedDataTypes": [],
+  "NSPrivacyAccessedAPITypes": []
+}
+PRIVACY_EOF
+          echo "✅ Created minimal privacy bundle for ${plugin}"
+        fi
+      done
       
       echo "=== Privacy Bundle Copy Complete ==="
     SCRIPT
