@@ -94,6 +94,7 @@ post_install do |installer|
     
     # List of plugins that need privacy bundles
     privacy_plugins = [
+      'image_picker_ios',
       'url_launcher_ios',
       'sqflite_darwin',
       'permission_handler_apple',
@@ -284,6 +285,7 @@ PRIVACY_EOF
       
       # List of plugins that need privacy bundles
       PRIVACY_PLUGINS=(
+        "image_picker_ios"
         "url_launcher_ios"
         "sqflite_darwin"
         "permission_handler_apple"
