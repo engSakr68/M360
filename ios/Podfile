@@ -202,6 +202,23 @@ post_install do |installer|
             echo "✅ Fixed nested structure for $plugin_name"
           fi
           
+          # Special handling for url_launcher_ios to ensure it's in the exact expected location
+          if [ "$plugin_name" = "url_launcher_ios" ]; then
+            echo "🔧 Special handling for url_launcher_ios..."
+            # Ensure the privacy file is directly in the bundle directory
+            local source_privacy_file="${bundle_dir}/${plugin_name}_privacy"
+            if [ -f "$source_privacy_file" ]; then
+              cp "$source_privacy_file" "$privacy_file"
+              echo "✅ Ensured url_launcher_ios privacy file is in correct location"
+            fi
+            
+            # Also copy to the bundle root for compatibility
+            local bundle_root="${BUILT_PRODUCTS_DIR}/${plugin_name}_privacy.bundle"
+            mkdir -p "$bundle_root"
+            cp "$source_privacy_file" "${bundle_root}/${plugin_name}_privacy"
+            echo "✅ Also copied url_launcher_ios privacy bundle to root: $bundle_root"
+          fi
+          
           # Verify the copy
           if [ -f "$privacy_file" ]; then
             echo "✅ Verified $plugin_name privacy bundle copy"
