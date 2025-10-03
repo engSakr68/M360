@@ -1,30 +1,15 @@
 #!/bin/bash
 
+# Verify Privacy Bundles Script
+# This script verifies that all required privacy bundles are present and properly configured
+
 set -e
 set -u
 set -o pipefail
 
-echo "=== Privacy Bundle Verification ==="
+echo "🔍 Verifying Privacy Bundles..."
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-print_status() {
-    echo -e "${GREEN}✅ $1${NC}"
-}
-
-print_warning() {
-    echo -e "${YELLOW}⚠️ $1${NC}"
-}
-
-print_error() {
-    echo -e "${RED}❌ $1${NC}"
-}
-
-# Navigate to project root
+# Navigate to the workspace
 cd /workspace
 
 # List of plugins that need privacy bundles
@@ -39,69 +24,66 @@ PRIVACY_PLUGINS=(
     "package_info_plus"
 )
 
-echo "Checking privacy bundles in ios/ directory..."
-
-ALL_GOOD=true
-
-for plugin in "${PRIVACY_PLUGINS[@]}"; do
-    BUNDLE_DIR="ios/${plugin}_privacy.bundle"
-    BUNDLE_FILE="${BUNDLE_DIR}/${plugin}_privacy"
+# Function to verify privacy bundle
+verify_privacy_bundle() {
+    local plugin_name="$1"
+    local bundle_path="ios/${plugin_name}_privacy.bundle/${plugin_name}_privacy"
     
-    if [ -d "${BUNDLE_DIR}" ]; then
-        if [ -f "${BUNDLE_FILE}" ]; then
+    echo "Checking $plugin_name privacy bundle..."
+    
+    if [ -f "$bundle_path" ]; then
+        echo "✅ $plugin_name privacy bundle exists"
+        
+        # Check if the file has content
+        if [ -s "$bundle_path" ]; then
+            echo "✅ $plugin_name privacy bundle has content ($(wc -c < "$bundle_path") bytes)"
+            
             # Check if it's valid JSON
-            if command -v python3 >/dev/null 2>&1; then
-                if python3 -m json.tool "${BUNDLE_FILE}" >/dev/null 2>&1; then
-                    print_status "${plugin} privacy bundle exists and is valid JSON"
-                else
-                    print_error "${plugin} privacy bundle exists but is not valid JSON"
-                    ALL_GOOD=false
-                fi
+            if python3 -m json.tool "$bundle_path" > /dev/null 2>&1; then
+                echo "✅ $plugin_name privacy bundle has valid JSON"
             else
-                print_status "${plugin} privacy bundle exists"
+                echo "❌ $plugin_name privacy bundle has invalid JSON"
+                return 1
             fi
         else
-            print_error "${plugin} privacy bundle directory exists but manifest file is missing"
-            ALL_GOOD=false
+            echo "❌ $plugin_name privacy bundle is empty"
+            return 1
         fi
     else
-        print_error "${plugin} privacy bundle directory is missing"
-        ALL_GOOD=false
+        echo "❌ $plugin_name privacy bundle missing: $bundle_path"
+        return 1
+    fi
+}
+
+# Verify all privacy bundles
+all_good=true
+for plugin in "${PRIVACY_PLUGINS[@]}"; do
+    if ! verify_privacy_bundle "$plugin"; then
+        all_good=false
     fi
 done
 
 echo ""
-echo "=== Podfile Check ==="
+echo "=== Verification Summary ==="
 
-if [ -f "ios/Podfile" ]; then
-    if grep -q "Pre-Build Privacy Bundle Fix" ios/Podfile; then
-        print_status "Podfile contains pre-build privacy fix"
-    else
-        print_warning "Podfile may not contain pre-build privacy fix"
-    fi
-    
-    if grep -q "Copy Privacy Bundles" ios/Podfile; then
-        print_status "Podfile contains privacy bundle copy script"
-    else
-        print_warning "Podfile may not contain privacy bundle copy script"
-    fi
+if [ "$all_good" = true ]; then
+    echo "🎉 All privacy bundles are present and properly configured!"
+    echo ""
+    echo "✅ The url_launcher_ios privacy bundle issue should be resolved"
+    echo "✅ You can now try building your iOS app again"
+    echo ""
+    echo "Next steps:"
+    echo "1. Try building your iOS app again"
+    echo "2. The build should now find the required privacy bundles"
+    echo "3. If you still get errors, check the build logs for any other missing files"
 else
-    print_error "Podfile not found"
-    ALL_GOOD=false
+    echo "❌ Some privacy bundles are missing or invalid"
+    echo "Please run the fix scripts again to ensure all bundles are created"
+    exit 1
 fi
 
 echo ""
-echo "=== Summary ==="
-
-if [ "$ALL_GOOD" = true ]; then
-    print_status "All privacy bundles are properly configured!"
-    echo ""
-    echo "Next steps:"
-    echo "1. Run 'cd ios && pod install' to apply the Podfile changes"
-    echo "2. Build your iOS app - the privacy bundle errors should be resolved"
-else
-    print_error "Some privacy bundles are missing or invalid"
-    echo ""
-    echo "Run the comprehensive fix script:"
-    echo "./fix_privacy_bundles_comprehensive.sh"
-fi
+echo "📋 Privacy Bundle Locations:"
+for plugin in "${PRIVACY_PLUGINS[@]}"; do
+    echo "  - ios/${plugin}_privacy.bundle/${plugin}_privacy"
+done
