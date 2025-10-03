@@ -83,7 +83,7 @@ dependencies:
   intl_utils: ^2.8.6
   json_annotation: ^4.8.1
   json_serializable: ^6.7.1
-  new_version_plus: any
+  new_version_plus: ^0.0.12
   open_file: ^3.5.7
   package_info_plus: ^8.3.1
   path_provider: ^2.1.1
