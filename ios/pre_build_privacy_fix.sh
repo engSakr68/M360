@@ -1,54 +1,52 @@
 #!/bin/bash
-# Pre-build script to ensure privacy bundles are available
+# Pre-build script to ensure privacy bundles are in place
 
 set -e
+set -u
+set -o pipefail
 
 echo "🔧 Pre-build: Ensuring privacy bundles are available..."
 
-# Create build directories if they don't exist
-mkdir -p build/Debug-dev-iphonesimulator/url_launcher_ios/url_launcher_ios_privacy.bundle
-mkdir -p build/Debug-iphonesimulator/url_launcher_ios/url_launcher_ios_privacy.bundle
-mkdir -p build/Profile-iphonesimulator/url_launcher_ios/url_launcher_ios_privacy.bundle
-mkdir -p build/Release-iphonesimulator/url_launcher_ios/url_launcher_ios_privacy.bundle
-
-# Copy privacy bundle to all build configurations
-if [ -d "url_launcher_ios_privacy.bundle" ]; then
-    cp -R url_launcher_ios_privacy.bundle/* build/Debug-dev-iphonesimulator/url_launcher_ios/url_launcher_ios_privacy.bundle/ 2>/dev/null || true
-    cp -R url_launcher_ios_privacy.bundle/* build/Debug-iphonesimulator/url_launcher_ios/url_launcher_ios_privacy.bundle/ 2>/dev/null || true
-    cp -R url_launcher_ios_privacy.bundle/* build/Profile-iphonesimulator/url_launcher_ios/url_launcher_ios_privacy.bundle/ 2>/dev/null || true
-    cp -R url_launcher_ios_privacy.bundle/* build/Release-iphonesimulator/url_launcher_ios/url_launcher_ios_privacy.bundle/ 2>/dev/null || true
-    echo "✅ Privacy bundles copied to all build configurations"
+# Get the build directory from Xcode environment
+if [ -n "${BUILT_PRODUCTS_DIR:-}" ]; then
+    BUILD_DIR="$BUILT_PRODUCTS_DIR"
 else
-    echo "⚠️ Source privacy bundle not found, creating minimal one..."
-    # Create minimal privacy bundle as fallback
-    for config in Debug-dev-iphonesimulator Debug-iphonesimulator Profile-iphonesimulator Release-iphonesimulator; do
-        mkdir -p "build/${config}/url_launcher_ios/url_launcher_ios_privacy.bundle"
-        cat > "build/${config}/url_launcher_ios/url_launcher_ios_privacy.bundle/url_launcher_ios_privacy" << 'PRIVACY_EOF'
-{
-  "NSPrivacyTracking": false,
-  "NSPrivacyCollectedDataTypes": [],
-  "NSPrivacyAccessedAPITypes": [
-    {
-      "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
-      "NSPrivacyAccessedAPITypeReasons": ["CA92.1"]
-    },
-    {
-      "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryFileTimestamp",
-      "NSPrivacyAccessedAPITypeReasons": ["C617.1"]
-    },
-    {
-      "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategorySystemBootTime",
-      "NSPrivacyAccessedAPITypeReasons": ["35F9.1"]
-    },
-    {
-      "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryDiskSpace",
-      "NSPrivacyAccessedAPITypeReasons": ["85F4.1"]
-    }
-  ]
-}
-PRIVACY_EOF
-    done
-    echo "✅ Minimal privacy bundles created for all configurations"
+    BUILD_DIR="build/Debug-dev-iphonesimulator"
 fi
 
-echo "🎉 Pre-build privacy bundle fix complete!"
+# List of plugins that need privacy bundles
+PRIVACY_PLUGINS=(
+    "url_launcher_ios"
+    "sqflite_darwin"
+    "image_picker_ios"
+    "permission_handler_apple"
+    "shared_preferences_foundation"
+    "share_plus"
+    "path_provider_foundation"
+    "package_info_plus"
+)
+
+# Copy privacy bundles to build locations
+for plugin in "${PRIVACY_PLUGINS[@]}"; do
+    SRC_BUNDLE="${SRCROOT:-.}/${plugin}_privacy.bundle"
+    
+    # Multiple possible build locations
+    BUILD_LOCATIONS=(
+        "$BUILD_DIR/${plugin}/${plugin}_privacy.bundle"
+        "$BUILD_DIR/${plugin}_privacy.bundle"
+        "$BUILD_DIR/url_launcher_ios/url_launcher_ios_privacy.bundle"
+        "$BUILD_DIR/sqflite_darwin/sqflite_darwin_privacy.bundle"
+    )
+    
+    if [ -d "$SRC_BUNDLE" ]; then
+        for location in "${BUILD_LOCATIONS[@]}"; do
+            mkdir -p "$(dirname "$location")"
+            cp -R "$SRC_BUNDLE" "$location" 2>/dev/null || true
+        done
+        echo "✅ Copied $plugin privacy bundle to build locations"
+    else
+        echo "⚠️ Source privacy bundle not found: $SRC_BUNDLE"
+    fi
+done
+
+echo "✅ Pre-build privacy bundle fix complete"
