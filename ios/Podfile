@@ -18,8 +18,7 @@ end
 require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
 flutter_ios_podfile_setup
 
-# Load the privacy bundle fix script
-require_relative 'post_install_privacy_fix.rb'
+# Privacy bundle fix is handled in the post_install block below
 
 # Map the Runner configurations CocoaPods should emit xcconfigs for
 project 'Runner', {
