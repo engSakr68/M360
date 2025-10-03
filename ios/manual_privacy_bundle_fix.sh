@@ -1,18 +1,18 @@
 #!/bin/bash
 
-# Quick Privacy Bundle Fix - Run this before building
+# Manual Privacy Bundle Fix for url_launcher_ios and sqflite_darwin
 set -e
 
-echo "🔧 Quick Privacy Bundle Fix"
+echo "🔧 Manual Privacy Bundle Fix"
 
-# Create the specific directories and files that the build system is looking for
+# Create the missing privacy bundle files
 mkdir -p ios/build/Debug-dev-iphonesimulator/url_launcher_ios/url_launcher_ios_privacy.bundle
 mkdir -p ios/build/Debug-dev-iphonesimulator/sqflite_darwin/sqflite_darwin_privacy.bundle
 
-# Copy the privacy bundle files
+# Copy privacy bundle content
 if [ -f "ios/url_launcher_ios_privacy.bundle/url_launcher_ios_privacy" ]; then
     cp ios/url_launcher_ios_privacy.bundle/url_launcher_ios_privacy ios/build/Debug-dev-iphonesimulator/url_launcher_ios/url_launcher_ios_privacy.bundle/
-    echo "✅ Fixed url_launcher_ios privacy bundle"
+    echo "✅ Copied url_launcher_ios privacy bundle"
 else
     # Create minimal privacy bundle
     cat > ios/build/Debug-dev-iphonesimulator/url_launcher_ios/url_launcher_ios_privacy.bundle/url_launcher_ios_privacy << 'PRIVACY_EOF'
@@ -27,7 +27,7 @@ fi
 
 if [ -f "ios/sqflite_darwin_privacy.bundle/sqflite_darwin_privacy" ]; then
     cp ios/sqflite_darwin_privacy.bundle/sqflite_darwin_privacy ios/build/Debug-dev-iphonesimulator/sqflite_darwin/sqflite_darwin_privacy.bundle/
-    echo "✅ Fixed sqflite_darwin privacy bundle"
+    echo "✅ Copied sqflite_darwin privacy bundle"
 else
     # Create minimal privacy bundle
     cat > ios/build/Debug-dev-iphonesimulator/sqflite_darwin/sqflite_darwin_privacy.bundle/sqflite_darwin_privacy << 'PRIVACY_EOF'
@@ -40,5 +40,4 @@ PRIVACY_EOF
     echo "✅ Created sqflite_darwin privacy bundle"
 fi
 
-echo "✅ Quick privacy bundle fix completed"
-echo "You can now try building again!"
+echo "✅ Manual privacy bundle fix completed"

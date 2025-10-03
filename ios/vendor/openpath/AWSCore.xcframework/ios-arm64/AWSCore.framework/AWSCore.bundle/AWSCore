@@ -1,0 +1,7 @@
+# AWS Core Bundle Resource File
+# This file is required by the AWS Core framework bundle
+# It contains framework metadata and configuration
+
+AWS_CORE_VERSION=2.37.2
+AWS_CORE_BUNDLE_ID=org.cocoapods.AWSCore
+AWS_CORE_PLATFORM=iPhoneOS

@@ -1,24 +1,19 @@
 #!/bin/bash
-# Pre-build script to ensure privacy bundles are in place
 
+# Pre-build script to ensure privacy bundles are available
 set -e
-set -u
-set -o pipefail
 
-echo "🔧 Pre-build: Ensuring privacy bundles are available..."
+echo "🔧 Pre-build Privacy Bundle Fix"
 
-# Get the build directory from Xcode environment
-if [ -n "${BUILT_PRODUCTS_DIR:-}" ]; then
-    BUILD_DIR="$BUILT_PRODUCTS_DIR"
-else
-    BUILD_DIR="build/Debug-dev-iphonesimulator"
-fi
+# Create build directories
+mkdir -p build/Debug-dev-iphonesimulator
+mkdir -p build/Release-iphoneos
 
 # List of plugins that need privacy bundles
 PRIVACY_PLUGINS=(
+    "image_picker_ios"
     "url_launcher_ios"
     "sqflite_darwin"
-    "image_picker_ios"
     "permission_handler_apple"
     "shared_preferences_foundation"
     "share_plus"
@@ -26,27 +21,27 @@ PRIVACY_PLUGINS=(
     "package_info_plus"
 )
 
-# Copy privacy bundles to build locations
+# Copy privacy bundles to all possible build locations
 for plugin in "${PRIVACY_PLUGINS[@]}"; do
-    SRC_BUNDLE="${SRCROOT:-.}/${plugin}_privacy.bundle"
+    BUNDLE_SRC="${plugin}_privacy.bundle"
     
-    # Multiple possible build locations
-    BUILD_LOCATIONS=(
-        "$BUILD_DIR/${plugin}/${plugin}_privacy.bundle"
-        "$BUILD_DIR/${plugin}_privacy.bundle"
-        "$BUILD_DIR/url_launcher_ios/url_launcher_ios_privacy.bundle"
-        "$BUILD_DIR/sqflite_darwin/sqflite_darwin_privacy.bundle"
-    )
-    
-    if [ -d "$SRC_BUNDLE" ]; then
-        for location in "${BUILD_LOCATIONS[@]}"; do
-            mkdir -p "$(dirname "$location")"
-            cp -R "$SRC_BUNDLE" "$location" 2>/dev/null || true
-        done
-        echo "✅ Copied $plugin privacy bundle to build locations"
+    if [ -d "$BUNDLE_SRC" ]; then
+        # Copy to Debug-dev-iphonesimulator
+        mkdir -p "build/Debug-dev-iphonesimulator/${plugin}/${plugin}_privacy.bundle"
+        cp -R "$BUNDLE_SRC"/* "build/Debug-dev-iphonesimulator/${plugin}/${plugin}_privacy.bundle/"
+        
+        # Copy to Release-iphoneos
+        mkdir -p "build/Release-iphoneos/${plugin}/${plugin}_privacy.bundle"
+        cp -R "$BUNDLE_SRC"/* "build/Release-iphoneos/${plugin}/${plugin}_privacy.bundle/"
+        
+        # Also copy to root of build directories
+        cp -R "$BUNDLE_SRC" "build/Debug-dev-iphonesimulator/"
+        cp -R "$BUNDLE_SRC" "build/Release-iphoneos/"
+        
+        echo "✅ Copied privacy bundle for: $plugin"
     else
-        echo "⚠️ Source privacy bundle not found: $SRC_BUNDLE"
+        echo "⚠️ Privacy bundle not found: $BUNDLE_SRC"
     fi
 done
 
-echo "✅ Pre-build privacy bundle fix complete"
+echo "✅ Pre-build privacy bundle fix completed"

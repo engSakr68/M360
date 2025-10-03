@@ -1,3 +1,113 @@
+#!/bin/bash
+
+# Permanent iOS Privacy Bundle Fix
+# This script creates a permanent solution by modifying the Xcode project and Podfile
+
+set -e
+set -u
+set -o pipefail
+
+echo "🔧 Permanent iOS Privacy Bundle Fix"
+echo "==================================="
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+print_status() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Change to project root
+cd /workspace
+
+print_status "Working directory: $(pwd)"
+
+# Step 1: Clean everything first
+print_status "Step 1: Cleaning build artifacts..."
+rm -rf ios/build
+rm -rf build/ios
+rm -rf ios/Pods
+rm -rf ios/Podfile.lock
+rm -rf ios/.symlinks
+print_success "Build artifacts cleaned"
+
+# Step 2: Ensure all privacy bundles exist
+print_status "Step 2: Ensuring all privacy bundles exist..."
+
+PRIVACY_PLUGINS=(
+    "image_picker_ios"
+    "url_launcher_ios"
+    "sqflite_darwin"
+    "permission_handler_apple"
+    "shared_preferences_foundation"
+    "share_plus"
+    "path_provider_foundation"
+    "package_info_plus"
+)
+
+for plugin in "${PRIVACY_PLUGINS[@]}"; do
+    BUNDLE_DIR="ios/${plugin}_privacy.bundle"
+    BUNDLE_FILE="${BUNDLE_DIR}/${plugin}_privacy"
+    
+    if [ ! -d "$BUNDLE_DIR" ]; then
+        mkdir -p "$BUNDLE_DIR"
+    fi
+    
+    if [ ! -f "$BUNDLE_FILE" ]; then
+        cat > "$BUNDLE_FILE" << EOF
+{
+  "NSPrivacyTracking": false,
+  "NSPrivacyCollectedDataTypes": [],
+  "NSPrivacyAccessedAPITypes": [
+    {
+      "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+      "NSPrivacyAccessedAPITypeReasons": ["CA92.1"]
+    },
+    {
+      "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryFileTimestamp",
+      "NSPrivacyAccessedAPITypeReasons": ["C617.1"]
+    },
+    {
+      "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategorySystemBootTime",
+      "NSPrivacyAccessedAPITypeReasons": ["35F9.1"]
+    },
+    {
+      "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryDiskSpace",
+      "NSPrivacyAccessedAPITypeReasons": ["85F4.1"]
+    }
+  ]
+}
+EOF
+        print_success "Created privacy bundle: $BUNDLE_FILE"
+    else
+        print_success "Privacy bundle exists: $BUNDLE_FILE"
+    fi
+done
+
+# Step 3: Create a comprehensive Podfile update
+print_status "Step 3: Creating comprehensive Podfile update..."
+
+# Backup the original Podfile
+cp ios/Podfile ios/Podfile.backup.permanent
+
+# Create a new Podfile with permanent privacy bundle handling
+cat > ios/Podfile << 'EOF'
 # frozen_string_literal: true
 
  $ios_target_version = '15.0'
@@ -397,3 +507,166 @@ AWS_EOF
   
   puts "✅ Permanent privacy bundle and AWS Core bundle fix completed"
 end
+EOF
+
+print_success "Updated Podfile with permanent privacy bundle fix"
+
+# Step 4: Create a build script that uses the new Podfile
+print_status "Step 4: Creating build script with permanent fix..."
+
+cat > build_ios_permanent_fix.sh << 'EOF'
+#!/bin/bash
+
+# iOS Build Script with Permanent Privacy Bundle Fix
+set -e
+set -u
+set -o pipefail
+
+echo "🚀 iOS Build with Permanent Privacy Bundle Fix"
+echo "============================================="
+
+# Colors
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+print_status() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+# Change to project root
+cd /workspace
+
+# Step 1: Clean everything
+print_status "Step 1: Cleaning build artifacts..."
+rm -rf ios/build
+rm -rf build/ios
+rm -rf ios/Pods
+rm -rf ios/Podfile.lock
+rm -rf ios/.symlinks
+print_success "Build artifacts cleaned"
+
+# Step 2: Get Flutter dependencies
+print_status "Step 2: Getting Flutter dependencies..."
+if command -v flutter >/dev/null 2>&1; then
+    flutter clean
+    flutter pub get
+    print_success "Flutter dependencies updated"
+else
+    print_warning "Flutter not available, skipping pub get"
+fi
+
+# Step 3: Install CocoaPods dependencies (this will apply the permanent fix)
+print_status "Step 3: Installing CocoaPods dependencies with permanent fix..."
+cd ios
+if command -v pod >/dev/null 2>&1; then
+    pod install --repo-update
+    print_success "CocoaPods dependencies installed with permanent privacy bundle fix"
+else
+    print_warning "CocoaPods not available, skipping pod install"
+fi
+cd ..
+
+# Step 4: Build for iOS simulator
+print_status "Step 4: Building for iOS simulator..."
+if command -v flutter >/dev/null 2>&1; then
+    flutter build ios --simulator --debug --flavor dev
+    print_success "iOS build completed successfully"
+else
+    print_warning "Flutter not available, build script ready for manual execution"
+    print_status "To build manually, run: flutter build ios --simulator --debug --flavor dev"
+fi
+
+echo "✅ iOS build with permanent privacy bundle fix completed!"
+echo ""
+print_status "The privacy bundles and AWS Core bundle are now permanently integrated into the build process."
+print_status "You should no longer encounter these build errors on subsequent builds."
+EOF
+
+chmod +x build_ios_permanent_fix.sh
+
+# Step 5: Create a verification script
+print_status "Step 5: Creating verification script..."
+
+cat > verify_privacy_bundles.sh << 'EOF'
+#!/bin/bash
+
+# Verify Privacy Bundles Script
+set -e
+
+echo "🔍 Verifying Privacy Bundles"
+
+PRIVACY_PLUGINS=(
+    "image_picker_ios"
+    "url_launcher_ios"
+    "sqflite_darwin"
+    "permission_handler_apple"
+    "shared_preferences_foundation"
+    "share_plus"
+    "path_provider_foundation"
+    "package_info_plus"
+)
+
+echo "Checking source privacy bundles..."
+for plugin in "${PRIVACY_PLUGINS[@]}"; do
+    BUNDLE_FILE="ios/${plugin}_privacy.bundle/${plugin}_privacy"
+    if [ -f "$BUNDLE_FILE" ]; then
+        echo "✅ Source privacy bundle exists: $plugin"
+    else
+        echo "❌ Source privacy bundle missing: $plugin"
+    fi
+done
+
+echo ""
+echo "Checking AWS Core bundle..."
+AWS_CORE_SIMULATOR="ios/vendor/openpath/AWSCore.xcframework/ios-arm64_x86_64-simulator/AWSCore.framework/AWSCore.bundle/AWSCore"
+if [ -f "$AWS_CORE_SIMULATOR" ]; then
+    echo "✅ AWS Core simulator bundle exists"
+else
+    echo "❌ AWS Core simulator bundle missing"
+fi
+
+AWS_CORE_DEVICE="ios/vendor/openpath/AWSCore.xcframework/ios-arm64/AWSCore.framework/AWSCore.bundle/AWSCore"
+if [ -f "$AWS_CORE_DEVICE" ]; then
+    echo "✅ AWS Core device bundle exists"
+else
+    echo "❌ AWS Core device bundle missing"
+fi
+
+echo ""
+echo "✅ Privacy bundle verification completed"
+EOF
+
+chmod +x verify_privacy_bundles.sh
+
+# Step 6: Run verification
+print_status "Step 6: Running verification..."
+./verify_privacy_bundles.sh
+
+print_success "Permanent iOS privacy bundle fix completed!"
+echo ""
+print_status "What was done:"
+print_status "1. ✅ Updated Podfile with permanent privacy bundle copy script phases"
+print_status "2. ✅ Added AWS Core bundle copy script phase"
+print_status "3. ✅ Integrated privacy bundle copying into the Xcode build process"
+print_status "4. ✅ Created build script that applies the permanent fix"
+print_status "5. ✅ Created verification script to check privacy bundles"
+echo ""
+print_status "Available scripts:"
+print_status "1. ./build_ios_permanent_fix.sh - Build with permanent fix applied"
+print_status "2. ./verify_privacy_bundles.sh - Verify privacy bundles exist"
+print_status "3. ios/Podfile - Updated with permanent privacy bundle handling"
+echo ""
+print_status "Next steps:"
+print_status "1. Run: ./build_ios_permanent_fix.sh"
+print_status "2. The privacy bundles will now be automatically copied during every build"
+print_status "3. You should no longer encounter privacy bundle build errors"

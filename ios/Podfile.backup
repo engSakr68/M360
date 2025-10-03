@@ -82,189 +82,91 @@ post_install do |installer|
   end
   puts "✅ BUILD_LIBRARY_FOR_DISTRIBUTION disabled for all targets"
 
-  # --- PERMANENT PRIVACY BUNDLE FIX ---
-  puts "🔧 Setting up permanent privacy bundle fix..."
-  
-  # Get the Runner target
-  app_target = installer.pods_project.targets.find { |t| t.name == 'Runner' }
-  
-  if app_target
-    # Remove any existing privacy script phases
-    app_target.shell_script_build_phases.dup.each do |phase|
-      if phase.name && (phase.name.include?('Privacy') || phase.name.include?('privacy') || phase.name.include?('🩹'))
-        app_target.build_phases.delete(phase)
-        puts "• Removed existing privacy script phase: #{phase.name}"
+  # --- Add privacy bundle script phases for all plugins
+  installer.pods_project.targets.each do |target|
+    # Remove any existing privacy script phases first
+    target.shell_script_build_phases.dup.each do |phase|
+      if phase.name.to_s.downcase.include?('privacy') || phase.name.to_s.include?('🩹')
+        target.build_phases.delete(phase)
+        puts "• Removed script phase: #{target.name} - #{phase.name}"
       end
     end
-
-    # Create a comprehensive privacy bundle copy script phase
-    privacy_phase = app_target.new_shell_script_build_phase('[CP] Copy Privacy Bundles (Permanent)')
-    privacy_phase.shell_path = '/bin/sh'
-    privacy_phase.show_env_vars_in_log = false
-    privacy_phase.shell_script = <<~SCRIPT
-      set -e
-      set -u
-      set -o pipefail
-      
-      echo "=== Permanent Privacy Bundle Copy ==="
-      
-      SRCROOT="${SRCROOT}"
-      BUILT_PRODUCTS_DIR="${BUILT_PRODUCTS_DIR}"
-      FRAMEWORKS_FOLDER_PATH="${FRAMEWORKS_FOLDER_PATH}"
-      
-      # List of plugins that need privacy bundles
-      PRIVACY_PLUGINS=(
-        "image_picker_ios"
-        "url_launcher_ios"
-        "sqflite_darwin"
-        "permission_handler_apple"
-        "shared_preferences_foundation"
-        "share_plus"
-        "path_provider_foundation"
-        "package_info_plus"
-      )
-      
-      # Copy privacy bundles for all plugins
-      for plugin in "${PRIVACY_PLUGINS[@]}"; do
-        echo "Processing privacy bundle for: $plugin"
+    
+    # List of plugins that need privacy bundles
+    privacy_plugins = [
+      'image_picker_ios',
+      'url_launcher_ios',
+      'sqflite_darwin',
+      'permission_handler_apple',
+      'shared_preferences_foundation',
+      'share_plus',
+      'path_provider_foundation',
+      'package_info_plus'
+    ]
+    
+    # Add privacy bundle script phase for each plugin
+    if privacy_plugins.include?(target.name)
+      privacy_phase = target.new_shell_script_build_phase('[CP] Copy Privacy Bundle')
+      privacy_phase.shell_path = '/bin/sh'
+      privacy_phase.show_env_vars_in_log = false
+      privacy_phase.shell_script = <<~SCRIPT
+        set -e
+        set -u
+        set -o pipefail
         
-        PRIVACY_BUNDLE_SRC="${SRCROOT}/${plugin}_privacy.bundle"
-        PRIVACY_BUNDLE_DST="${BUILT_PRODUCTS_DIR}/${plugin}/${plugin}_privacy.bundle"
+        echo "=== Copying #{target.name} Privacy Bundle ==="
         
-        # Create the destination directory
-        mkdir -p "${BUILT_PRODUCTS_DIR}/${plugin}"
+        SRCROOT="${SRCROOT}"
+        BUILT_PRODUCTS_DIR="${BUILT_PRODUCTS_DIR}"
+        FRAMEWORKS_FOLDER_PATH="${FRAMEWORKS_FOLDER_PATH}"
+        
+        PRIVACY_BUNDLE_SRC="${SRCROOT}/#{target.name}_privacy.bundle"
+        PRIVACY_BUNDLE_DST="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/#{target.name}_privacy.bundle"
+        
+        # Also try the target-specific directory
+        TARGET_DST="${BUILT_PRODUCTS_DIR}/#{target.name}/#{target.name}_privacy.bundle"
         
         if [ -d "${PRIVACY_BUNDLE_SRC}" ]; then
-          echo "Copying ${plugin} privacy bundle from ${PRIVACY_BUNDLE_SRC}"
+          echo "Copying privacy bundle from ${PRIVACY_BUNDLE_SRC}"
+          
+          # Copy to frameworks folder
+          mkdir -p "${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}"
           cp -R "${PRIVACY_BUNDLE_SRC}" "${PRIVACY_BUNDLE_DST}"
-          echo "✅ Copied ${plugin} privacy bundle to: ${PRIVACY_BUNDLE_DST}"
+          echo "✅ Copied to frameworks folder: ${PRIVACY_BUNDLE_DST}"
+          
+          # Copy to target-specific directory
+          mkdir -p "${BUILT_PRODUCTS_DIR}/#{target.name}"
+          cp -R "${PRIVACY_BUNDLE_SRC}" "${TARGET_DST}"
+          echo "✅ Copied to target directory: ${TARGET_DST}"
+          
+          echo "✅ #{target.name} privacy bundle copied successfully"
         else
-          echo "⚠️ ${plugin} privacy bundle not found at ${PRIVACY_BUNDLE_SRC}"
+          echo "⚠️ Privacy bundle not found at ${PRIVACY_BUNDLE_SRC}"
           # Create minimal privacy bundle as fallback
-          mkdir -p "${PRIVACY_BUNDLE_DST}"
-          cat > "${PRIVACY_BUNDLE_DST}/${plugin}_privacy" << 'PRIVACY_EOF'
+          mkdir -p "${TARGET_DST}"
+          cat > "${TARGET_DST}/#{target.name}_privacy" << 'PRIVACY_EOF'
 {
   "NSPrivacyTracking": false,
   "NSPrivacyCollectedDataTypes": [],
   "NSPrivacyAccessedAPITypes": []
 }
 PRIVACY_EOF
-          echo "✅ Created minimal privacy bundle for ${plugin}"
+          echo "✅ Created minimal privacy bundle for #{target.name}"
         fi
-        
-        # Verify the bundle was created
-        if [ -f "${PRIVACY_BUNDLE_DST}/${plugin}_privacy" ]; then
-          echo "✅ Verified ${plugin} privacy bundle exists"
-        else
-          echo "❌ Failed to create ${plugin} privacy bundle"
-          exit 1
-        fi
-      done
-      
-      echo "=== Permanent Privacy Bundle Copy Complete ==="
-    SCRIPT
-    
-    # Move this phase to be early in the build process (after dependencies but before compilation)
-    app_target.build_phases.move(privacy_phase, 1)
-    puts "✅ Added permanent privacy bundle copy phase to Runner target"
-  else
-    puts "⚠️ Runner target not found in Pods project"
-  end
-
-  # --- AWS Core Bundle Fix ---
-  puts "🔧 Setting up AWS Core bundle fix..."
-  
-  if app_target
-    # Remove any existing AWS script phases
-    app_target.shell_script_build_phases.dup.each do |phase|
-      if phase.name && (phase.name.include?('AWS') || phase.name.include?('aws'))
-        app_target.build_phases.delete(phase)
-        puts "• Removed existing AWS script phase: #{phase.name}"
-      end
+      SCRIPT
+      puts "✅ Added privacy bundle script phase for #{target.name}"
     end
-
-    # Create AWS Core bundle copy script phase
-    aws_phase = app_target.new_shell_script_build_phase('[CP] Copy AWS Core Bundle (Permanent)')
-    aws_phase.shell_path = '/bin/sh'
-    aws_phase.show_env_vars_in_log = false
-    aws_phase.shell_script = <<~SCRIPT
-      set -e
-      set -u
-      set -o pipefail
-      
-      echo "=== Permanent AWS Core Bundle Copy ==="
-      
-      SRCROOT="${SRCROOT}"
-      BUILT_PRODUCTS_DIR="${BUILT_PRODUCTS_DIR}"
-      
-      # AWS Core bundle paths
-      AWS_CORE_SIMULATOR_SRC="${SRCROOT}/vendor/openpath/AWSCore.xcframework/ios-arm64_x86_64-simulator/AWSCore.framework/AWSCore.bundle"
-      AWS_CORE_DEVICE_SRC="${SRCROOT}/vendor/openpath/AWSCore.xcframework/ios-arm64/AWSCore.framework/AWSCore.bundle"
-      
-      # Determine if we're building for simulator or device
-      if [[ "${EFFECTIVE_PLATFORM_NAME}" == "-iphonesimulator" ]]; then
-        AWS_CORE_SRC="${AWS_CORE_SIMULATOR_SRC}"
-        echo "Building for simulator"
-      else
-        AWS_CORE_SRC="${AWS_CORE_DEVICE_SRC}"
-        echo "Building for device"
-      fi
-      
-      # Copy AWS Core bundle to build directory
-      AWS_CORE_DST="${BUILT_PRODUCTS_DIR}/AWSCore/AWSCore.bundle"
-      mkdir -p "${BUILT_PRODUCTS_DIR}/AWSCore"
-      
-      if [ -d "${AWS_CORE_SRC}" ]; then
-        cp -R "${AWS_CORE_SRC}" "${AWS_CORE_DST}"
-        echo "✅ Copied AWS Core bundle to: ${AWS_CORE_DST}"
-        
-        # Ensure the AWSCore file exists in the bundle
-        if [ ! -f "${AWS_CORE_DST}/AWSCore" ]; then
-          echo "Creating AWSCore file in bundle..."
-          cat > "${AWS_CORE_DST}/AWSCore" << 'AWS_EOF'
-# AWS Core Bundle Resource File
-AWS_CORE_VERSION=2.37.2
-AWS_CORE_BUNDLE_ID=org.cocoapods.AWSCore
-AWS_CORE_PLATFORM=${EFFECTIVE_PLATFORM_NAME}
-AWS_EOF
-          echo "✅ Created AWSCore file in bundle"
-        fi
-      else
-        echo "⚠️ AWS Core bundle not found at: ${AWS_CORE_SRC}"
-        # Create minimal bundle as fallback
-        mkdir -p "${AWS_CORE_DST}"
-        cat > "${AWS_CORE_DST}/AWSCore" << 'AWS_EOF'
-# AWS Core Bundle Resource File (Fallback)
-AWS_CORE_VERSION=2.37.2
-AWS_CORE_BUNDLE_ID=org.cocoapods.AWSCore
-AWS_CORE_PLATFORM=${EFFECTIVE_PLATFORM_NAME}
-AWS_EOF
-        echo "✅ Created fallback AWS Core bundle"
-      fi
-      
-      # Verify the bundle was created
-      if [ -f "${AWS_CORE_DST}/AWSCore" ]; then
-        echo "✅ Verified AWS Core bundle exists"
-      else
-        echo "❌ Failed to create AWS Core bundle"
-        exit 1
-      fi
-      
-      echo "=== Permanent AWS Core Bundle Copy Complete ==="
-    SCRIPT
-    
-    # Move this phase to be early in the build process
-    app_target.build_phases.move(aws_phase, 2)
-    puts "✅ Added permanent AWS Core bundle copy phase to Runner target"
   end
 
-  # --- SwiftCBOR Framework Embedding (existing code) ---
+  # --- Get the app target
+  app_target = installer.pods_project.targets.find { |t| t.name == 'Runner' }
+  
   if app_target
     # Remove any existing SwiftCBOR script phases
     app_target.shell_script_build_phases.dup.each do |phase|
-      if phase.name && (phase.name.include?('SwiftCBOR') || phase.name.include?('🩹'))
+      if phase.name.to_s.downcase.include?('swiftcbor') || phase.name.to_s.include?('🩹')
         app_target.build_phases.delete(phase)
-        puts "• Removed existing SwiftCBOR script phase: #{phase.name}"
+        puts "• Removed script phase from Runner: #{phase.name}"
       end
     end
 
@@ -365,6 +267,79 @@ AWS_EOF
     # Move the script phase to be the last phase
     app_target.build_phases.move(embed_framework_phase, app_target.build_phases.count - 1)
     puts "✅ Added SwiftCBOR framework embedding script phase to Runner target"
+    
+    # Add privacy bundle copying script phase to Runner target
+    privacy_copy_phase = app_target.new_shell_script_build_phase('[CP] Copy Privacy Bundles to App')
+    privacy_copy_phase.shell_path = '/bin/sh'
+    privacy_copy_phase.show_env_vars_in_log = false
+    privacy_copy_phase.shell_script = <<~SCRIPT
+      set -e
+      set -u
+      set -o pipefail
+      
+      echo "=== Copying Privacy Bundles to App Bundle ==="
+      
+      SRCROOT="${SRCROOT}"
+      BUILT_PRODUCTS_DIR="${BUILT_PRODUCTS_DIR}"
+      FRAMEWORKS_FOLDER_PATH="${FRAMEWORKS_FOLDER_PATH}"
+      
+      # List of plugins that need privacy bundles
+      PRIVACY_PLUGINS=(
+        "image_picker_ios"
+        "url_launcher_ios"
+        "sqflite_darwin"
+        "permission_handler_apple"
+        "shared_preferences_foundation"
+        "share_plus"
+        "path_provider_foundation"
+        "package_info_plus"
+      )
+      
+      # Copy privacy bundles for all plugins
+      for plugin in "${PRIVACY_PLUGINS[@]}"; do
+        echo "Processing privacy bundle for: $plugin"
+        
+        PRIVACY_BUNDLE_SRC="${SRCROOT}/${plugin}_privacy.bundle"
+        PRIVACY_BUNDLE_DST="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/${plugin}_privacy.bundle"
+        TARGET_DST="${BUILT_PRODUCTS_DIR}/${plugin}/${plugin}_privacy.bundle"
+        
+        if [ -d "${PRIVACY_BUNDLE_SRC}" ]; then
+          echo "Copying ${plugin} privacy bundle..."
+          
+          # Copy to frameworks folder
+          mkdir -p "${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}"
+          cp -R "${PRIVACY_BUNDLE_SRC}" "${PRIVACY_BUNDLE_DST}"
+          echo "✅ Copied to frameworks folder: ${PRIVACY_BUNDLE_DST}"
+          
+          # Copy to target-specific directory
+          mkdir -p "${BUILT_PRODUCTS_DIR}/${plugin}"
+          cp -R "${PRIVACY_BUNDLE_SRC}" "${TARGET_DST}"
+          echo "✅ Copied to target directory: ${TARGET_DST}"
+          
+          echo "✅ ${plugin} privacy bundle copied"
+        else
+          echo "⚠️ ${plugin} privacy bundle not found at ${PRIVACY_BUNDLE_SRC}"
+          # Create minimal privacy bundle as fallback
+          mkdir -p "${TARGET_DST}"
+          cat > "${TARGET_DST}/${plugin}_privacy" << 'PRIVACY_EOF'
+{
+  "NSPrivacyTracking": false,
+  "NSPrivacyCollectedDataTypes": [],
+  "NSPrivacyAccessedAPITypes": []
+}
+PRIVACY_EOF
+          echo "✅ Created minimal privacy bundle for ${plugin}"
+        fi
+      done
+      
+      echo "=== Privacy Bundle Copy Complete ==="
+    SCRIPT
+    
+    # Move the privacy copy phase to be the last phase
+    app_target.build_phases.move(privacy_copy_phase, app_target.build_phases.count - 1)
+    puts "✅ Added privacy bundle copying script phase to Runner target"
+  else
+    puts "⚠️ Runner target not found in Pods project"
   end
 
   # --- Ensure Flutter module/headers are visible
@@ -394,6 +369,4 @@ AWS_EOF
       cfg.build_settings['CLANG_ENABLE_MODULES'] = 'YES'
     end
   end
-  
-  puts "✅ Permanent privacy bundle and AWS Core bundle fix completed"
 end
