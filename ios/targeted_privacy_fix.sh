@@ -1,14 +1,14 @@
 #!/bin/bash
 
-# Pre-Build Privacy Fix Script
-# This script runs before the Xcode build to ensure all privacy bundles are in place
-# It addresses the root cause by creating the required files in the expected locations
+# Targeted Privacy Fix Script
+# This script creates privacy bundles in the actual build locations
+# It focuses on the paths that Xcode is actually looking for
 
 set -e
 set -u
 set -o pipefail
 
-echo "=== Pre-Build Privacy Fix Script ==="
+echo "=== Targeted Privacy Fix Script ==="
 
 # Set default paths
 SRCROOT="${SRCROOT:-/workspace/ios}"
@@ -71,14 +71,14 @@ PRIVACY_XML_EOF
     echo "✅ Created source privacy bundle for $plugin_name"
 }
 
-# Function to create privacy bundle in build locations
-create_build_privacy_bundle() {
+# Function to create privacy bundle in local build locations
+create_local_build_privacy_bundle() {
     local plugin_name="$1"
     local source_bundle="${SRCROOT}/${plugin_name}_privacy.bundle"
     
-    echo "Creating build privacy bundles for: $plugin_name"
+    echo "Creating local build privacy bundles for: $plugin_name"
     
-    # Define all possible build destination paths
+    # Define local build destination paths
     local build_dest_paths=()
     
     # Add common Flutter build paths
@@ -91,14 +91,6 @@ create_build_privacy_bundle() {
             fi
         done
     fi
-    
-    # Add specific paths from the error messages
-    build_dest_paths+=(
-        "/Volumes/Untitled/member360_wb/build/ios/Debug-dev-iphonesimulator/${plugin_name}/${plugin_name}_privacy.bundle"
-        "/Volumes/Untitled/member360_wb/build/ios/Release-dev-iphonesimulator/${plugin_name}/${plugin_name}_privacy.bundle"
-        "/Volumes/Untitled/member360_wb/build/ios/Debug-prod-iphonesimulator/${plugin_name}/${plugin_name}_privacy.bundle"
-        "/Volumes/Untitled/member360_wb/build/ios/Release-prod-iphonesimulator/${plugin_name}/${plugin_name}_privacy.bundle"
-    )
     
     # Copy to all build locations
     for dest_dir in "${build_dest_paths[@]}"; do
@@ -121,9 +113,9 @@ for plugin in "${PRIVACY_PLUGINS[@]}"; do
     create_source_privacy_bundle "$plugin"
 done
 
-# Create build privacy bundles for all plugins
+# Create local build privacy bundles for all plugins
 for plugin in "${PRIVACY_PLUGINS[@]}"; do
-    create_build_privacy_bundle "$plugin"
+    create_local_build_privacy_bundle "$plugin"
 done
 
 # Handle AWS Core bundle
@@ -131,13 +123,19 @@ echo "Processing AWS Core bundle..."
 AWS_CORE_SRC_SIMULATOR="${SRCROOT}/vendor/openpath/AWSCore.xcframework/ios-arm64_x86_64-simulator/AWSCore.framework/AWSCore.bundle"
 AWS_CORE_SRC_DEVICE="${SRCROOT}/vendor/openpath/AWSCore.xcframework/ios-arm64/AWSCore.framework/AWSCore.bundle"
 
-# Define AWS Core destination paths
-AWS_CORE_DEST_PATHS=(
-    "/Volumes/Untitled/member360_wb/build/ios/Debug-dev-iphonesimulator/AWSCore/AWSCore.bundle"
-    "/Volumes/Untitled/member360_wb/build/ios/Release-dev-iphonesimulator/AWSCore/AWSCore.bundle"
-    "/Volumes/Untitled/member360_wb/build/ios/Debug-prod-iphonesimulator/AWSCore/AWSCore.bundle"
-    "/Volumes/Untitled/member360_wb/build/ios/Release-prod-iphonesimulator/AWSCore/AWSCore.bundle"
-)
+# Define local AWS Core destination paths
+AWS_CORE_DEST_PATHS=()
+
+# Add common Flutter build paths
+flutter_build_root="${PROJECT_ROOT}/build/ios"
+if [ -d "$flutter_build_root" ]; then
+    # Find all build directories
+    for build_dir in "$flutter_build_root"/*; do
+        if [ -d "$build_dir" ]; then
+            AWS_CORE_DEST_PATHS+=("${build_dir}/AWSCore/AWSCore.bundle")
+        fi
+    done
+fi
 
 # Copy AWS Core bundle to all locations
 for dest_path in "${AWS_CORE_DEST_PATHS[@]}"; do
@@ -164,4 +162,4 @@ AWS_EOF
     fi
 done
 
-echo "=== Pre-Build Privacy Fix Complete ==="
+echo "=== Targeted Privacy Fix Complete ==="

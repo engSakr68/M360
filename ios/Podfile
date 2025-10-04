@@ -88,8 +88,20 @@ post_install do |installer|
     privacy_phase.shell_path = '/bin/sh'
     privacy_phase.show_env_vars_in_log = false
     privacy_phase.shell_script = <<~SCRIPT
-      # Run the dynamic build path fix script
-      if [ -f "${SRCROOT}/dynamic_build_path_fix.sh" ]; then
+      # Run the root cause privacy fix script
+      if [ -f "${SRCROOT}/root_cause_privacy_fix.sh" ]; then
+        echo "Running root cause privacy fix script..."
+        "${SRCROOT}/root_cause_privacy_fix.sh"
+      elif [ -f "${SRCROOT}/targeted_privacy_fix.sh" ]; then
+        echo "Running targeted privacy fix script..."
+        "${SRCROOT}/targeted_privacy_fix.sh"
+      elif [ -f "${SRCROOT}/comprehensive_privacy_manifest_fix.sh" ]; then
+        echo "Running comprehensive privacy manifest fix script..."
+        "${SRCROOT}/comprehensive_privacy_manifest_fix.sh"
+      elif [ -f "${SRCROOT}/universal_privacy_bundle_fix.sh" ]; then
+        echo "Running universal privacy bundle fix script..."
+        "${SRCROOT}/universal_privacy_bundle_fix.sh"
+      elif [ -f "${SRCROOT}/dynamic_build_path_fix.sh" ]; then
         echo "Running dynamic build path fix script..."
         "${SRCROOT}/dynamic_build_path_fix.sh"
       elif [ -f "${SRCROOT}/fix_privacy_bundles_final.sh" ]; then
