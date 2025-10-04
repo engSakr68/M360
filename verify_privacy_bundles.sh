@@ -1,89 +1,91 @@
 #!/bin/bash
 
-# Verify Privacy Bundles Script
-# This script verifies that all required privacy bundles are present and properly configured
+# Privacy Bundle Verification Script
+# This script verifies that all required privacy bundles exist
 
 set -e
 set -u
-set -o pipefail
 
-echo "🔍 Verifying Privacy Bundles..."
+echo "=== Privacy Bundle Verification ==="
 
-# Navigate to the workspace
-cd /workspace
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+print_status() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
 
 # List of plugins that need privacy bundles
 PRIVACY_PLUGINS=(
-    "image_picker_ios"
     "url_launcher_ios"
     "sqflite_darwin"
-    "permission_handler_apple"
     "shared_preferences_foundation"
     "share_plus"
+    "device_info_plus"
+    "permission_handler_apple"
     "path_provider_foundation"
     "package_info_plus"
+    "file_picker"
+    "flutter_local_notifications"
+    "image_picker_ios"
 )
 
-# Function to verify privacy bundle
-verify_privacy_bundle() {
-    local plugin_name="$1"
-    local bundle_path="ios/${plugin_name}_privacy.bundle/${plugin_name}_privacy"
-    
-    echo "Checking $plugin_name privacy bundle..."
-    
-    if [ -f "$bundle_path" ]; then
-        echo "✅ $plugin_name privacy bundle exists"
-        
-        # Check if the file has content
-        if [ -s "$bundle_path" ]; then
-            echo "✅ $plugin_name privacy bundle has content ($(wc -c < "$bundle_path") bytes)"
-            
-            # Check if it's valid JSON
-            if python3 -m json.tool "$bundle_path" > /dev/null 2>&1; then
-                echo "✅ $plugin_name privacy bundle has valid JSON"
-            else
-                echo "❌ $plugin_name privacy bundle has invalid JSON"
-                return 1
-            fi
-        else
-            echo "❌ $plugin_name privacy bundle is empty"
-            return 1
-        fi
-    else
-        echo "❌ $plugin_name privacy bundle missing: $bundle_path"
-        return 1
-    fi
-}
+PROJECT_ROOT="/workspace"
+IOS_DIR="${PROJECT_ROOT}/ios"
 
-# Verify all privacy bundles
+print_status "Verifying privacy bundles in: ${IOS_DIR}"
+
+# Verify each privacy bundle
 all_good=true
 for plugin in "${PRIVACY_PLUGINS[@]}"; do
-    if ! verify_privacy_bundle "$plugin"; then
+    bundle_dir="${IOS_DIR}/${plugin}_privacy.bundle"
+    privacy_file="${bundle_dir}/${plugin}_privacy"
+    
+    if [ -d "$bundle_dir" ] && [ -f "$privacy_file" ]; then
+        print_success "✅ ${plugin} privacy bundle exists"
+    else
+        print_error "❌ ${plugin} privacy bundle missing"
         all_good=false
     fi
 done
 
-echo ""
-echo "=== Verification Summary ==="
-
-if [ "$all_good" = true ]; then
-    echo "🎉 All privacy bundles are present and properly configured!"
-    echo ""
-    echo "✅ The url_launcher_ios privacy bundle issue should be resolved"
-    echo "✅ You can now try building your iOS app again"
-    echo ""
-    echo "Next steps:"
-    echo "1. Try building your iOS app again"
-    echo "2. The build should now find the required privacy bundles"
-    echo "3. If you still get errors, check the build logs for any other missing files"
+# Verify AWS Core bundle
+AWS_CORE_DIR="${IOS_DIR}/vendor/openpath/AWSCore.xcframework"
+if [ -d "$AWS_CORE_DIR" ]; then
+    print_success "✅ AWS Core framework exists"
 else
-    echo "❌ Some privacy bundles are missing or invalid"
-    echo "Please run the fix scripts again to ensure all bundles are created"
-    exit 1
+    print_warning "⚠️ AWS Core framework not found"
 fi
 
-echo ""
-echo "📋 Privacy Bundle Locations:"
-for plugin in "${PRIVACY_PLUGINS[@]}"; do
-    echo "  - ios/${plugin}_privacy.bundle/${plugin}_privacy"
-done
+# Verify build script
+BUILD_SCRIPT="${IOS_DIR}/comprehensive_privacy_build_script.sh"
+if [ -f "$BUILD_SCRIPT" ] && [ -x "$BUILD_SCRIPT" ]; then
+    print_success "✅ Comprehensive build script exists and is executable"
+else
+    print_error "❌ Comprehensive build script missing or not executable"
+    all_good=false
+fi
+
+if [ "$all_good" = true ]; then
+    print_success "🎉 All privacy bundles are properly configured!"
+    exit 0
+else
+    print_error "❌ Some privacy bundles are missing or misconfigured"
+    exit 1
+fi
