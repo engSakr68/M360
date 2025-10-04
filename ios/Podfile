@@ -137,8 +137,8 @@ post_install do |installer|
   end
   puts "✅ BUILD_LIBRARY_FOR_DISTRIBUTION disabled for all targets"
 
-  # --- ENHANCED PRIVACY BUNDLE FIX WITH PATH HANDLING ---
-  puts "🔧 Setting up enhanced privacy bundle fix with path handling..."
+  # --- COMPREHENSIVE PRIVACY BUNDLE FIX ---
+  puts "🔧 Setting up comprehensive privacy bundle fix..."
   
   # Get the Runner target
   app_target = installer.pods_project.targets.find { |t| t.name == 'Runner' }
@@ -152,8 +152,8 @@ post_install do |installer|
       end
     end
 
-    # Create an enhanced privacy bundle copy script phase with path handling
-    privacy_phase = app_target.new_shell_script_build_phase('[CP] Copy Privacy Bundles (Path Fixed)')
+    # Create comprehensive privacy bundle copy script phase
+    privacy_phase = app_target.new_shell_script_build_phase('[CP] Copy Privacy Bundles (Comprehensive)')
     privacy_phase.shell_path = '/bin/sh'
     privacy_phase.show_env_vars_in_log = false
     privacy_phase.shell_script = <<~SCRIPT
@@ -161,104 +161,59 @@ post_install do |installer|
       set -u
       set -o pipefail
       
-      echo "=== Enhanced Privacy Bundle Copy (Path Fixed) ==="
+      echo "=== Comprehensive Privacy Bundle Copy ==="
       
-      SRCROOT="${SRCROOT}"
-      BUILT_PRODUCTS_DIR="${BUILT_PRODUCTS_DIR}"
-      FRAMEWORKS_FOLDER_PATH="${FRAMEWORKS_FOLDER_PATH}"
-      CONFIGURATION_BUILD_DIR="${CONFIGURATION_BUILD_DIR}"
-      
+      # Debug: Show build variables
       echo "SRCROOT: ${SRCROOT}"
       echo "BUILT_PRODUCTS_DIR: ${BUILT_PRODUCTS_DIR}"
       echo "CONFIGURATION_BUILD_DIR: ${CONFIGURATION_BUILD_DIR}"
+      echo "PWD: $(pwd)"
       
-      # List of plugins that need privacy bundles
+      # List of plugins that need privacy bundles (from error messages)
       PRIVACY_PLUGINS=(
-        "image_picker_ios"
         "url_launcher_ios"
         "sqflite_darwin"
-        "permission_handler_apple"
         "shared_preferences_foundation"
         "share_plus"
+        "permission_handler_apple"
         "path_provider_foundation"
         "package_info_plus"
-        "firebase_messaging"
       )
       
-      # Function to copy privacy bundle with path handling
+      # Function to copy privacy bundle
       copy_privacy_bundle() {
         local plugin_name="$1"
-        local bundle_dir="${SRCROOT}/${plugin_name}_privacy.bundle"
+        local source_bundle="${SRCROOT}/${plugin_name}_privacy.bundle"
+        local source_file="${source_bundle}/${plugin_name}_privacy"
         local dest_dir="${BUILT_PRODUCTS_DIR}/${plugin_name}/${plugin_name}_privacy.bundle"
-        local privacy_file="$dest_dir/${plugin_name}_privacy"
+        local dest_file="${dest_dir}/${plugin_name}_privacy"
         
         echo "Processing privacy bundle for: $plugin_name"
-        echo "Source bundle: $bundle_dir"
+        echo "Source bundle: $source_bundle"
+        echo "Source file: $source_file"
         echo "Destination: $dest_dir"
         
-        if [ -d "$bundle_dir" ]; then
+        if [ -d "$source_bundle" ] && [ -f "$source_file" ]; then
           # Create destination directory
           mkdir -p "$(dirname "$dest_dir")"
           
           # Copy the bundle
-          cp -R "$bundle_dir" "$dest_dir"
+          cp -R "$source_bundle" "$dest_dir"
           echo "✅ Copied $plugin_name privacy bundle to: $dest_dir"
           
-          # Fix nested structure if it exists
-          local nested_bundle_dir="$dest_dir/${plugin_name}_privacy.bundle"
-          local nested_privacy_file="$nested_bundle_dir/${plugin_name}_privacy"
-          
-          if [ -d "$nested_bundle_dir" ] && [ -f "$nested_privacy_file" ] && [ ! -f "$privacy_file" ]; then
-            echo "🔧 Fixing nested structure for $plugin_name..."
-            cp "$nested_privacy_file" "$privacy_file"
-            echo "✅ Fixed nested structure for $plugin_name"
-          fi
-          
-          # Special handling for url_launcher_ios to ensure it's in the exact expected location
-          if [ "$plugin_name" = "url_launcher_ios" ]; then
-            echo "🔧 Special handling for url_launcher_ios..."
-            # Ensure the privacy file is directly in the bundle directory
-            local source_privacy_file="${bundle_dir}/${plugin_name}_privacy"
-            if [ -f "$source_privacy_file" ]; then
-              cp "$source_privacy_file" "$privacy_file"
-              echo "✅ Ensured url_launcher_ios privacy file is in correct location"
-            fi
-            
-            # Also copy to the bundle root for compatibility
-            local bundle_root="${BUILT_PRODUCTS_DIR}/${plugin_name}_privacy.bundle"
-            mkdir -p "$bundle_root"
-            cp "$source_privacy_file" "${bundle_root}/${plugin_name}_privacy"
-            echo "✅ Also copied url_launcher_ios privacy bundle to root: $bundle_root"
-          fi
-          
-          # Special handling for sqflite_darwin
-          if [ "$plugin_name" = "sqflite_darwin" ]; then
-            echo "🔧 Special handling for sqflite_darwin..."
-            local source_privacy_file="${bundle_dir}/${plugin_name}_privacy"
-            if [ -f "$source_privacy_file" ]; then
-              cp "$source_privacy_file" "$privacy_file"
-              echo "✅ Ensured sqflite_darwin privacy file is in correct location"
-            fi
-            
-            # Also copy to the bundle root for compatibility
-            local bundle_root="${BUILT_PRODUCTS_DIR}/${plugin_name}_privacy.bundle"
-            mkdir -p "$bundle_root"
-            cp "$source_privacy_file" "${bundle_root}/${plugin_name}_privacy"
-            echo "✅ Also copied sqflite_darwin privacy bundle to root: $bundle_root"
-          fi
-          
           # Verify the copy
-          if [ -f "$privacy_file" ]; then
+          if [ -f "$dest_file" ]; then
             echo "✅ Verified $plugin_name privacy bundle copy"
           else
             echo "❌ Failed to verify $plugin_name privacy bundle copy"
             return 1
           fi
         else
-          echo "⚠️ $plugin_name privacy bundle not found at $bundle_dir"
-          # Create minimal privacy bundle as fallback
+          echo "⚠️ $plugin_name privacy bundle not found, creating minimal one"
+          
+          # Create minimal privacy bundle
           mkdir -p "$dest_dir"
-          cat > "$privacy_file" << 'PRIVACY_EOF'
+          cat > "$dest_file" << 'PRIVACY_EOF'
 {
   "NSPrivacyTracking": false,
   "NSPrivacyCollectedDataTypes": [],
@@ -282,12 +237,12 @@ PRIVACY_EOF
         done
       fi
       
-      echo "=== Enhanced Privacy Bundle Copy (Path Fixed) Complete ==="
+      echo "=== Comprehensive Privacy Bundle Copy Complete ==="
     SCRIPT
     
     # Move this phase to be early in the build process (after dependencies but before compilation)
     app_target.build_phases.move(privacy_phase, 1)
-    puts "✅ Added enhanced privacy bundle copy phase with path handling to Runner target"
+    puts "✅ Added comprehensive privacy bundle copy phase to Runner target"
   else
     puts "⚠️ Runner target not found in Pods project"
   end
