@@ -1,95 +1,99 @@
 #!/bin/bash
 
-# Comprehensive Privacy Bundle Fix Script
-# This script fixes the nested privacy bundle structure issue
-
 set -e
 set -u
 set -o pipefail
 
-echo "=== Comprehensive Privacy Bundle Fix ==="
+echo "=== Final Privacy Bundle Fix ==="
 
-# Get build environment variables
-SRCROOT="${SRCROOT:-/workspace/ios}"
-BUILT_PRODUCTS_DIR="${BUILT_PRODUCTS_DIR:-/workspace/ios/build/Debug-dev-iphonesimulator}"
+# Get the project root
+PROJECT_ROOT="/workspace"
+IOS_DIR="${PROJECT_ROOT}/ios"
+BUILD_DIR="${IOS_DIR}/build"
 
-echo "SRCROOT: $SRCROOT"
-echo "BUILT_PRODUCTS_DIR: $BUILT_PRODUCTS_DIR"
+echo "Project root: ${PROJECT_ROOT}"
+echo "iOS directory: ${IOS_DIR}"
+echo "Build directory: ${BUILD_DIR}"
 
 # List of plugins that need privacy bundles
 PRIVACY_PLUGINS=(
     "url_launcher_ios"
     "sqflite_darwin"
+    "image_picker_ios"
     "permission_handler_apple"
     "shared_preferences_foundation"
-    "path_provider_foundation"
     "share_plus"
+    "path_provider_foundation"
     "package_info_plus"
-    "image_picker_ios"
+    "firebase_messaging"
 )
 
-# Function to fix privacy bundle structure
-fix_privacy_bundle() {
+# Function to ensure privacy bundle exists and is properly structured
+ensure_privacy_bundle() {
     local plugin_name="$1"
-    local plugin_dir="$BUILT_PRODUCTS_DIR/${plugin_name}"
-    local bundle_dir="$plugin_dir/${plugin_name}_privacy.bundle"
-    local nested_bundle_dir="$bundle_dir/${plugin_name}_privacy.bundle"
-    local privacy_file="$bundle_dir/${plugin_name}_privacy"
-    local nested_privacy_file="$nested_bundle_dir/${plugin_name}_privacy"
+    local source_bundle="${IOS_DIR}/${plugin_name}_privacy.bundle"
+    local source_privacy_file="${source_bundle}/${plugin_name}_privacy"
     
     echo "Processing privacy bundle for: $plugin_name"
+    echo "Source bundle: $source_bundle"
+    echo "Source privacy file: $source_privacy_file"
     
-    # Check if the plugin directory exists
-    if [ ! -d "$plugin_dir" ]; then
-        echo "⚠️ Plugin directory not found: $plugin_dir"
-        return 0
+    # Check if source bundle exists
+    if [ ! -d "$source_bundle" ]; then
+        echo "⚠️ Source bundle not found: $source_bundle"
+        return 1
     fi
     
-    # Check if the bundle directory exists
-    if [ ! -d "$bundle_dir" ]; then
-        echo "⚠️ Bundle directory not found: $bundle_dir"
-        return 0
+    # Check if source privacy file exists
+    if [ ! -f "$source_privacy_file" ]; then
+        echo "⚠️ Source privacy file not found: $source_privacy_file"
+        return 1
     fi
     
-    # Check if the privacy file exists in the correct location
-    if [ -f "$privacy_file" ]; then
-        echo "✅ Privacy file already in correct location: $privacy_file"
-        return 0
-    fi
+    echo "✅ Source privacy bundle verified for $plugin_name"
     
-    # Check if there's a nested structure
-    if [ -d "$nested_bundle_dir" ] && [ -f "$nested_privacy_file" ]; then
-        echo "🔧 Found nested structure, fixing..."
+    # For each build configuration, ensure the privacy bundle is properly copied
+    for build_config in "Debug-dev-iphonesimulator" "Debug-iphonesimulator" "Release-iphoneos" "Release-iphonesimulator"; do
+        local build_config_dir="${BUILD_DIR}/${build_config}"
         
-        # Copy the privacy file to the correct location
-        cp "$nested_privacy_file" "$privacy_file"
-        echo "✅ Copied privacy file from nested structure: $privacy_file"
-        
-        # Verify the copy
-        if [ -f "$privacy_file" ]; then
-            echo "✅ Verified privacy file copy for $plugin_name"
+        if [ -d "$build_config_dir" ]; then
+            echo "Processing build configuration: $build_config"
+            
+            # Copy to root level
+            local dest_root_bundle="${build_config_dir}/${plugin_name}_privacy.bundle"
+            local dest_root_file="${dest_root_bundle}/${plugin_name}_privacy"
+            
+            mkdir -p "$dest_root_bundle"
+            cp "$source_privacy_file" "$dest_root_file"
+            echo "✅ Copied to root level: $dest_root_file"
+            
+            # Copy to plugin subdirectory
+            local dest_plugin_dir="${build_config_dir}/${plugin_name}"
+            local dest_plugin_bundle="${dest_plugin_dir}/${plugin_name}_privacy.bundle"
+            local dest_plugin_file="${dest_plugin_bundle}/${plugin_name}_privacy"
+            
+            mkdir -p "$dest_plugin_bundle"
+            cp "$source_privacy_file" "$dest_plugin_file"
+            echo "✅ Copied to plugin directory: $dest_plugin_file"
+            
+            # Verify both copies exist
+            if [ -f "$dest_root_file" ] && [ -f "$dest_plugin_file" ]; then
+                echo "✅ Verified both copies exist for $plugin_name in $build_config"
+            else
+                echo "❌ Failed to verify copies for $plugin_name in $build_config"
+                return 1
+            fi
         else
-            echo "❌ Failed to verify privacy file copy for $plugin_name"
-            return 1
+            echo "⚠️ Build configuration directory not found: $build_config_dir"
         fi
-    else
-        echo "⚠️ No nested structure found for $plugin_name"
-        
-        # Create minimal privacy bundle as fallback
-        cat > "$privacy_file" << EOF
-{
-  "NSPrivacyTracking": false,
-  "NSPrivacyCollectedDataTypes": [],
-  "NSPrivacyAccessedAPITypes": []
-}
-EOF
-        echo "✅ Created minimal privacy bundle for $plugin_name"
-    fi
+    done
+    
+    echo "✅ Privacy bundle processing complete for $plugin_name"
 }
 
-# Fix all privacy bundles
+# Process all privacy bundles
 for plugin in "${PRIVACY_PLUGINS[@]}"; do
-    fix_privacy_bundle "$plugin"
+    ensure_privacy_bundle "$plugin"
 done
 
-echo "=== Comprehensive Privacy Bundle Fix Complete ==="
+echo "=== Final Privacy Bundle Fix Complete ==="
