@@ -179,6 +179,16 @@ post_install do |installer|
   end
   puts "✅ BUILD_LIBRARY_FOR_DISTRIBUTION disabled for all targets"
 
+  # Resolve app (Runner) Xcode target for later customization
+  app_target = nil
+  installer.aggregate_targets.each do |aggregate_target|
+    aggregate_target.user_targets.each do |user_target|
+      if user_target.name == 'Runner'
+        app_target = user_target
+      end
+    end
+  end
+
   # --- SwiftCBOR Framework Embedding ---
   if app_target
     # Remove any existing SwiftCBOR script phases
