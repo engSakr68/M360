@@ -88,12 +88,15 @@ post_install do |installer|
     privacy_phase.shell_path = '/bin/sh'
     privacy_phase.show_env_vars_in_log = false
     privacy_phase.shell_script = <<~SCRIPT
-      # Run the comprehensive privacy bundle build script
-      if [ -f "${SRCROOT}/comprehensive_privacy_build_script.sh" ]; then
+      # Run the enhanced privacy bundle fix script
+      if [ -f "${SRCROOT}/enhanced_privacy_bundle_fix.sh" ]; then
+        echo "Running enhanced privacy bundle fix script..."
+        "${SRCROOT}/enhanced_privacy_bundle_fix.sh"
+      elif [ -f "${SRCROOT}/comprehensive_privacy_build_script.sh" ]; then
         echo "Running comprehensive privacy bundle build script..."
         "${SRCROOT}/comprehensive_privacy_build_script.sh"
       else
-        echo "⚠️ Comprehensive privacy bundle build script not found"
+        echo "⚠️ No privacy bundle fix script found"
         exit 1
       fi
     SCRIPT

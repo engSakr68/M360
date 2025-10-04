@@ -40,20 +40,27 @@ ensure_privacy_bundle() {
     local dest_file="${dest_dir}/${plugin_name}_privacy"
     
     echo "Processing privacy bundle for: $plugin_name"
+    echo "Source bundle: $source_bundle"
+    echo "Source file: $source_file"
+    echo "Dest dir: $dest_dir"
+    echo "Dest file: $dest_file"
     
     if [ -d "$source_bundle" ] && [ -f "$source_file" ]; then
         # Create destination directory
-        mkdir -p "$(dirname "$dest_dir")"
+        mkdir -p "$dest_dir"
         
-        # Copy the bundle
-        cp -R "$source_bundle" "$dest_dir"
-        echo "✅ Copied $plugin_name privacy bundle to: $dest_dir"
+        # Copy the entire bundle directory
+        cp -R "$source_bundle"/* "$dest_dir/"
+        echo "✅ Copied $plugin_name privacy bundle contents to: $dest_dir"
         
         # Verify the copy
         if [ -f "$dest_file" ]; then
             echo "✅ Verified $plugin_name privacy bundle copy"
+            ls -la "$dest_dir"
         else
             echo "❌ Failed to verify $plugin_name privacy bundle copy"
+            echo "Contents of dest_dir:"
+            ls -la "$dest_dir" || echo "Directory does not exist"
             return 1
         fi
     else
