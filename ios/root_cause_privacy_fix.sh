@@ -181,7 +181,7 @@ if [ -n "${TARGET_BUILD_DIR:-}" ]; then
 fi
 
 # Add common Flutter build paths
-local flutter_build_root="${SRCROOT}/../build/ios"
+flutter_build_root="${SRCROOT}/../build/ios"
 if [ -d "$flutter_build_root" ]; then
     # Find all build directories
     for build_dir in "$flutter_build_root"/*; do
@@ -192,7 +192,7 @@ if [ -d "$flutter_build_root" ]; then
 fi
 
 # Add specific paths from the error messages (only if accessible)
-local error_paths=(
+error_paths=(
     "/Volumes/Untitled/member360_wb/build/ios/Debug-dev-iphonesimulator/AWSCore/AWSCore.bundle"
     "/Volumes/Untitled/member360_wb/build/ios/Release-dev-iphonesimulator/AWSCore/AWSCore.bundle"
     "/Volumes/Untitled/member360_wb/build/ios/Debug-prod-iphonesimulator/AWSCore/AWSCore.bundle"
@@ -201,7 +201,7 @@ local error_paths=(
 
 # Only add error paths if the parent directory is accessible
 for error_path in "${error_paths[@]}"; do
-    local parent_dir="$(dirname "$(dirname "$error_path")")"
+    parent_dir="$(dirname "$(dirname "$error_path")")"
     if [ -d "$parent_dir" ] || [ -w "$(dirname "$parent_dir")" ]; then
         AWS_CORE_DEST_PATHS+=("$error_path")
     fi

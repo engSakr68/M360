@@ -71,59 +71,101 @@ post_install do |installer|
   # --- COMPREHENSIVE PRIVACY BUNDLE FIX ---
   puts "🔧 Setting up comprehensive privacy bundle fix..."
   
-  # Get the Runner target
-  app_target = installer.pods_project.targets.find { |t| t.name == 'Runner' }
+  # Find the Pods-Runner aggregate target (runs CocoaPods scripts for the app)
+  pods_runner_target = installer.pods_project.targets.find { |t| t.name == 'Pods-Runner' }
   
-  if app_target
-    # Remove any existing privacy script phases
-    app_target.shell_script_build_phases.dup.each do |phase|
-      if phase.name && (phase.name.include?('Privacy') || phase.name.include?('privacy') || phase.name.include?('🩹'))
-        app_target.build_phases.delete(phase)
+  if pods_runner_target
+    # Remove any existing privacy script phases (avoid duplicates)
+    pods_runner_target.shell_script_build_phases.dup.each do |phase|
+      if phase.name && (phase.name.include?('Comprehensive Privacy Bundle Fix') || phase.name.include?('Privacy') || phase.name.include?('privacy') || phase.name.include?('🩹'))
+        pods_runner_target.build_phases.delete(phase)
         puts "• Removed existing privacy script phase: #{phase.name}"
       end
     end
 
     # Create comprehensive privacy bundle copy script phase
-    privacy_phase = app_target.new_shell_script_build_phase('[CP] Comprehensive Privacy Bundle Fix')
+    privacy_phase = pods_runner_target.new_shell_script_build_phase('[CP] Comprehensive Privacy Bundle Fix')
     privacy_phase.shell_path = '/bin/sh'
     privacy_phase.show_env_vars_in_log = false
     privacy_phase.shell_script = <<~SCRIPT
-      # Run the root cause privacy fix script
-      if [ -f "${SRCROOT}/root_cause_privacy_fix.sh" ]; then
+      set -euo pipefail
+      # Determine iOS project root from Pods root
+      IOS_ROOT="${PODS_ROOT}/.."
+      echo "Privacy bundle fix: IOS_ROOT=${IOS_ROOT}"
+
+      if [ -f "${IOS_ROOT}/root_cause_privacy_fix.sh" ]; then
         echo "Running root cause privacy fix script..."
-        "${SRCROOT}/root_cause_privacy_fix.sh"
-      elif [ -f "${SRCROOT}/targeted_privacy_fix.sh" ]; then
+        SRCROOT="${IOS_ROOT}" bash "${IOS_ROOT}/root_cause_privacy_fix.sh"
+      elif [ -f "${IOS_ROOT}/targeted_privacy_fix.sh" ]; then
         echo "Running targeted privacy fix script..."
-        "${SRCROOT}/targeted_privacy_fix.sh"
-      elif [ -f "${SRCROOT}/comprehensive_privacy_manifest_fix.sh" ]; then
+        SRCROOT="${IOS_ROOT}" bash "${IOS_ROOT}/targeted_privacy_fix.sh"
+      elif [ -f "${IOS_ROOT}/comprehensive_privacy_manifest_fix.sh" ]; then
         echo "Running comprehensive privacy manifest fix script..."
-        "${SRCROOT}/comprehensive_privacy_manifest_fix.sh"
-      elif [ -f "${SRCROOT}/universal_privacy_bundle_fix.sh" ]; then
+        SRCROOT="${IOS_ROOT}" bash "${IOS_ROOT}/comprehensive_privacy_manifest_fix.sh"
+      elif [ -f "${IOS_ROOT}/universal_privacy_bundle_fix.sh" ]; then
         echo "Running universal privacy bundle fix script..."
-        "${SRCROOT}/universal_privacy_bundle_fix.sh"
-      elif [ -f "${SRCROOT}/dynamic_build_path_fix.sh" ]; then
+        SRCROOT="${IOS_ROOT}" bash "${IOS_ROOT}/universal_privacy_bundle_fix.sh"
+      elif [ -f "${IOS_ROOT}/dynamic_build_path_fix.sh" ]; then
         echo "Running dynamic build path fix script..."
-        "${SRCROOT}/dynamic_build_path_fix.sh"
-      elif [ -f "${SRCROOT}/fix_privacy_bundles_final.sh" ]; then
+        SRCROOT="${IOS_ROOT}" bash "${IOS_ROOT}/dynamic_build_path_fix.sh"
+      elif [ -f "${IOS_ROOT}/fix_privacy_bundles_final.sh" ]; then
         echo "Running final privacy bundle fix script..."
-        "${SRCROOT}/fix_privacy_bundles_final.sh"
-      elif [ -f "${SRCROOT}/enhanced_privacy_bundle_fix.sh" ]; then
+        SRCROOT="${IOS_ROOT}" bash "${IOS_ROOT}/fix_privacy_bundles_final.sh"
+      elif [ -f "${IOS_ROOT}/enhanced_privacy_bundle_fix.sh" ]; then
         echo "Running enhanced privacy bundle fix script..."
-        "${SRCROOT}/enhanced_privacy_bundle_fix.sh"
-      elif [ -f "${SRCROOT}/comprehensive_privacy_build_script.sh" ]; then
+        SRCROOT="${IOS_ROOT}" bash "${IOS_ROOT}/enhanced_privacy_bundle_fix.sh"
+      elif [ -f "${IOS_ROOT}/comprehensive_privacy_build_script.sh" ]; then
         echo "Running comprehensive privacy bundle build script..."
-        "${SRCROOT}/comprehensive_privacy_build_script.sh"
+        SRCROOT="${IOS_ROOT}" bash "${IOS_ROOT}/comprehensive_privacy_build_script.sh"
       else
-        echo "⚠️ No privacy bundle fix script found"
-        exit 1
+        echo "⚠️ No privacy bundle fix script found in ${IOS_ROOT}"
       fi
     SCRIPT
     
     # Move this phase to be early in the build process
-    app_target.build_phases.move(privacy_phase, 0)
-    puts "✅ Added comprehensive privacy bundle fix phase to Runner target"
+    pods_runner_target.build_phases.move(privacy_phase, 0)
+    puts "✅ Added comprehensive privacy bundle fix phase to Pods-Runner target"
   else
-    puts "⚠️ Runner target not found in Pods project"
+    puts "⚠️ Pods-Runner target not found in Pods project"
+  end
+
+  # Also attach a preparatory script to relevant plugin pod targets so bundles exist before their resource phases
+  plugin_targets = %w[
+    url_launcher_ios
+    sqflite_darwin
+    shared_preferences_foundation
+    share_plus
+    permission_handler_apple
+    path_provider_foundation
+    package_info_plus
+    image_picker_ios
+    fluttertoast
+    flutter_local_notifications
+  ]
+
+  installer.pods_project.targets.each do |t|
+    next unless plugin_targets.include?(t.name)
+
+    # Remove any existing similar script phases to avoid duplicates
+    t.shell_script_build_phases.dup.each do |phase|
+      if phase.name && (phase.name.include?('[CP] Prepare Privacy Bundles') || phase.name.include?('Privacy'))
+        t.build_phases.delete(phase)
+        puts "• Removed existing privacy phase from #{t.name}: #{phase.name}"
+      end
+    end
+
+    phase = t.new_shell_script_build_phase("[CP] Prepare Privacy Bundles for #{t.name}")
+    phase.shell_path = '/bin/sh'
+    phase.show_env_vars_in_log = false
+    phase.shell_script = <<~SCRIPT
+      set -euo pipefail
+      IOS_ROOT="${PODS_ROOT}/.."
+      echo "Preparing privacy bundles for #{t.name}..."
+      SRCROOT="${IOS_ROOT}" bash "${IOS_ROOT}/root_cause_privacy_fix.sh"
+    SCRIPT
+    # Make sure it runs early
+    t.build_phases.move(phase, 0)
+    puts "✅ Added privacy prepare phase to pod target: #{t.name}"
   end
 
   # --- Disable BUILD_LIBRARY_FOR_DISTRIBUTION for ALL targets
