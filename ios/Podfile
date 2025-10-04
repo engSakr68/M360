@@ -180,6 +180,8 @@ post_install do |installer|
   puts "✅ BUILD_LIBRARY_FOR_DISTRIBUTION disabled for all targets"
 
   # --- SwiftCBOR Framework Embedding ---
+  # Find the Runner target (the main app target)
+  app_target = installer.pods_project.targets.find { |t| t.name == 'Runner' }
   if app_target
     # Remove any existing SwiftCBOR script phases
     app_target.shell_script_build_phases.dup.each do |phase|
