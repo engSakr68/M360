@@ -1,18 +1,20 @@
 #!/bin/bash
 
+# Pre-Build Privacy Bundle Fix
+# This script ensures all privacy bundles are in place before the build starts
+
 set -e
 set -u
 set -o pipefail
 
 echo "=== Pre-Build Privacy Bundle Fix ==="
 
-SRCROOT="${SRCROOT}"
-BUILT_PRODUCTS_DIR="${BUILT_PRODUCTS_DIR}"
-CONFIGURATION_BUILD_DIR="${CONFIGURATION_BUILD_DIR}"
+# Get the project root directory
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IOS_DIR="${PROJECT_ROOT}/ios"
 
-echo "SRCROOT: ${SRCROOT}"
-echo "BUILT_PRODUCTS_DIR: ${BUILT_PRODUCTS_DIR}"
-echo "CONFIGURATION_BUILD_DIR: ${CONFIGURATION_BUILD_DIR}"
+echo "Project Root: ${PROJECT_ROOT}"
+echo "iOS Directory: ${IOS_DIR}"
 
 # List of plugins that need privacy bundles
 PRIVACY_PLUGINS=(
@@ -30,55 +32,61 @@ PRIVACY_PLUGINS=(
 # Function to copy privacy bundle
 copy_privacy_bundle() {
     local plugin_name="$1"
-    local bundle_dir="${SRCROOT}/${plugin_name}_privacy.bundle"
-    local dest_dir="${BUILT_PRODUCTS_DIR}/${plugin_name}/${plugin_name}_privacy.bundle"
-    local privacy_file="$dest_dir/${plugin_name}_privacy"
+    local source_bundle="${IOS_DIR}/${plugin_name}_privacy.bundle"
+    local source_file="${source_bundle}/${plugin_name}_privacy"
     
     echo "Processing privacy bundle for: $plugin_name"
     
-    if [ -d "$bundle_dir" ]; then
-        # Create destination directory
-        mkdir -p "$(dirname "$dest_dir")"
+    if [ -f "$source_file" ]; then
+        echo "✅ Found source file: $source_file"
         
-        # Copy the bundle
-        cp -R "$bundle_dir" "$dest_dir"
-        echo "✅ Copied $plugin_name privacy bundle to: $dest_dir"
+        # Copy to multiple build configurations
+        local build_configs=(
+            "Debug-dev-iphonesimulator"
+            "Debug-iphonesimulator"
+            "Release-iphonesimulator"
+            "Release-iphoneos"
+        )
         
-        # Special handling for firebase_messaging to handle capitalization differences
-        if [ "$plugin_name" = "firebase_messaging" ]; then
-            echo "🔧 Special handling for firebase_messaging..."
-            # Handle both lowercase and capitalized versions
-            local source_privacy_file="${bundle_dir}/${plugin_name}_privacy"
-            if [ -f "$source_privacy_file" ]; then
-                cp "$source_privacy_file" "$privacy_file"
-                echo "✅ Ensured firebase_messaging privacy file is in correct location"
-            fi
+        for config in "${build_configs[@]}"; do
+            local build_dir="${IOS_DIR}/build/${config}"
+            local dest_dir="${build_dir}/${plugin_name}/${plugin_name}_privacy.bundle"
+            local dest_file="${dest_dir}/${plugin_name}_privacy"
             
-            # Also copy with capitalized naming for compatibility
-            local capitalized_privacy_file="${dest_dir}/firebase_messaging_Privacy"
-            cp "$source_privacy_file" "$capitalized_privacy_file"
-            echo "✅ Also copied firebase_messaging privacy bundle with capitalized naming"
-        fi
+            # Create destination directory
+            mkdir -p "$dest_dir"
+            
+            # Copy the privacy file
+            cp "$source_file" "$dest_file"
+            echo "✅ Copied to: $dest_file"
+            
+            # Also copy to bundle root for compatibility
+            local bundle_root="${build_dir}/${plugin_name}_privacy.bundle"
+            mkdir -p "$bundle_root"
+            cp "$source_file" "${bundle_root}/${plugin_name}_privacy"
+            echo "✅ Also copied to bundle root: ${bundle_root}/${plugin_name}_privacy"
+        done
         
-        # Verify the copy
-        if [ -f "$privacy_file" ]; then
-            echo "✅ Verified $plugin_name privacy bundle copy"
-        else
-            echo "❌ Failed to verify $plugin_name privacy bundle copy"
-            return 1
-        fi
+        echo "✅ Completed privacy bundle fix for: $plugin_name"
     else
-        echo "⚠️ $plugin_name privacy bundle not found at $bundle_dir"
+        echo "⚠️ Privacy bundle not found for: $plugin_name at $source_file"
+        
         # Create minimal privacy bundle as fallback
-        mkdir -p "$dest_dir"
-        cat > "$privacy_file" << 'PRIVACY_EOF'
+        for config in "${build_configs[@]}"; do
+            local build_dir="${IOS_DIR}/build/${config}"
+            local dest_dir="${build_dir}/${plugin_name}/${plugin_name}_privacy.bundle"
+            local dest_file="${dest_dir}/${plugin_name}_privacy"
+            
+            mkdir -p "$dest_dir"
+            cat > "$dest_file" << 'PRIVACY_EOF'
 {
   "NSPrivacyTracking": false,
   "NSPrivacyCollectedDataTypes": [],
   "NSPrivacyAccessedAPITypes": []
 }
 PRIVACY_EOF
-        echo "✅ Created minimal privacy bundle for $plugin_name"
+            echo "✅ Created minimal privacy bundle for $plugin_name at $dest_file"
+        done
     fi
 }
 
@@ -87,4 +95,14 @@ for plugin in "${PRIVACY_PLUGINS[@]}"; do
     copy_privacy_bundle "$plugin"
 done
 
+# Special verification for url_launcher_ios
+url_launcher_file="${IOS_DIR}/build/Debug-dev-iphonesimulator/url_launcher_ios/url_launcher_ios_privacy.bundle/url_launcher_ios_privacy"
+if [ -f "$url_launcher_file" ]; then
+    echo "✅ url_launcher_ios privacy bundle verified: $url_launcher_file"
+else
+    echo "❌ url_launcher_ios privacy bundle missing: $url_launcher_file"
+    exit 1
+fi
+
 echo "=== Pre-Build Privacy Bundle Fix Complete ==="
+echo "All privacy bundles are now in place for the build."

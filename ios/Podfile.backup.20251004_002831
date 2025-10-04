@@ -99,17 +99,11 @@ post_install do |installer|
       
       echo "=== Pre-Build Privacy Bundle Fix ==="
       
-      # Debug: Show build variables
-      echo "SRCROOT: ${SRCROOT}"
-      echo "BUILT_PRODUCTS_DIR: ${BUILT_PRODUCTS_DIR}"
-      echo "CONFIGURATION_BUILD_DIR: ${CONFIGURATION_BUILD_DIR}"
-      echo "PWD: $(pwd)"
-      
       # Run the pre-build privacy fix script
       if [ -f "${SRCROOT}/pre_build_url_launcher_fix.sh" ]; then
         echo "Running URL launcher privacy fix script..."
         "${SRCROOT}/pre_build_url_launcher_fix.sh"
-      elif [ -f "${SRCROOT}/pre_build_privacy_fix.sh" ]; then
+    elif [ -f "${SRCROOT}/pre_build_privacy_fix.sh" ]; then
         echo "Running pre-build privacy fix script..."
         "${SRCROOT}/pre_build_privacy_fix.sh"
       else
@@ -137,8 +131,8 @@ post_install do |installer|
   end
   puts "✅ BUILD_LIBRARY_FOR_DISTRIBUTION disabled for all targets"
 
-  # --- ENHANCED PRIVACY BUNDLE FIX WITH PATH HANDLING ---
-  puts "🔧 Setting up enhanced privacy bundle fix with path handling..."
+  # --- ENHANCED PRIVACY BUNDLE FIX ---
+  puts "🔧 Setting up enhanced privacy bundle fix..."
   
   # Get the Runner target
   app_target = installer.pods_project.targets.find { |t| t.name == 'Runner' }
@@ -152,8 +146,8 @@ post_install do |installer|
       end
     end
 
-    # Create an enhanced privacy bundle copy script phase with path handling
-    privacy_phase = app_target.new_shell_script_build_phase('[CP] Copy Privacy Bundles (Path Fixed)')
+    # Create an enhanced privacy bundle copy script phase
+    privacy_phase = app_target.new_shell_script_build_phase('[CP] Copy Privacy Bundles (Enhanced)')
     privacy_phase.shell_path = '/bin/sh'
     privacy_phase.show_env_vars_in_log = false
     privacy_phase.shell_script = <<~SCRIPT
@@ -161,7 +155,7 @@ post_install do |installer|
       set -u
       set -o pipefail
       
-      echo "=== Enhanced Privacy Bundle Copy (Path Fixed) ==="
+      echo "=== Enhanced Privacy Bundle Copy ==="
       
       SRCROOT="${SRCROOT}"
       BUILT_PRODUCTS_DIR="${BUILT_PRODUCTS_DIR}"
@@ -185,7 +179,7 @@ post_install do |installer|
         "firebase_messaging"
       )
       
-      # Function to copy privacy bundle with path handling
+      # Function to copy privacy bundle
       copy_privacy_bundle() {
         local plugin_name="$1"
         local bundle_dir="${SRCROOT}/${plugin_name}_privacy.bundle"
@@ -193,8 +187,6 @@ post_install do |installer|
         local privacy_file="$dest_dir/${plugin_name}_privacy"
         
         echo "Processing privacy bundle for: $plugin_name"
-        echo "Source bundle: $bundle_dir"
-        echo "Destination: $dest_dir"
         
         if [ -d "$bundle_dir" ]; then
           # Create destination directory
@@ -231,20 +223,20 @@ post_install do |installer|
             echo "✅ Also copied url_launcher_ios privacy bundle to root: $bundle_root"
           fi
           
-          # Special handling for sqflite_darwin
-          if [ "$plugin_name" = "sqflite_darwin" ]; then
-            echo "🔧 Special handling for sqflite_darwin..."
+          # Special handling for firebase_messaging to handle capitalization differences
+          if [ "$plugin_name" = "firebase_messaging" ]; then
+            echo "🔧 Special handling for firebase_messaging..."
+            # Handle both lowercase and capitalized versions
             local source_privacy_file="${bundle_dir}/${plugin_name}_privacy"
             if [ -f "$source_privacy_file" ]; then
               cp "$source_privacy_file" "$privacy_file"
-              echo "✅ Ensured sqflite_darwin privacy file is in correct location"
+              echo "✅ Ensured firebase_messaging privacy file is in correct location"
             fi
             
-            # Also copy to the bundle root for compatibility
-            local bundle_root="${BUILT_PRODUCTS_DIR}/${plugin_name}_privacy.bundle"
-            mkdir -p "$bundle_root"
-            cp "$source_privacy_file" "${bundle_root}/${plugin_name}_privacy"
-            echo "✅ Also copied sqflite_darwin privacy bundle to root: $bundle_root"
+            # Also copy with capitalized naming for compatibility
+            local capitalized_privacy_file="${dest_dir}/firebase_messaging_Privacy"
+            cp "$source_privacy_file" "$capitalized_privacy_file"
+            echo "✅ Also copied firebase_messaging privacy bundle with capitalized naming"
           fi
           
           # Verify the copy
@@ -282,12 +274,12 @@ PRIVACY_EOF
         done
       fi
       
-      echo "=== Enhanced Privacy Bundle Copy (Path Fixed) Complete ==="
+      echo "=== Enhanced Privacy Bundle Copy Complete ==="
     SCRIPT
     
     # Move this phase to be early in the build process (after dependencies but before compilation)
     app_target.build_phases.move(privacy_phase, 1)
-    puts "✅ Added enhanced privacy bundle copy phase with path handling to Runner target"
+    puts "✅ Added enhanced privacy bundle copy phase to Runner target"
   else
     puts "⚠️ Runner target not found in Pods project"
   end

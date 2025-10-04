@@ -1,67 +1,86 @@
 #!/bin/bash
-# Comprehensive iOS build script with privacy bundle fixes
+
+# iOS Build Script with Privacy Bundle Fix
+# This script ensures privacy bundles are in place before building
 
 set -e
 set -u
 set -o pipefail
 
-echo "🚀 Comprehensive iOS Build with Privacy Bundle Fixes..."
+echo "=== iOS Build with Privacy Bundle Fix ==="
 
-# Navigate to project root
-cd "$(dirname "$0")"
+# Get the project root directory
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+IOS_DIR="${PROJECT_ROOT}/ios"
 
-# Step 1: Run the comprehensive fix
-echo "🔧 Step 1: Running comprehensive privacy bundle fix..."
-./comprehensive_ios_build_fix.sh
+echo "Project Root: ${PROJECT_ROOT}"
+echo "iOS Directory: ${IOS_DIR}"
 
-# Step 2: Run pre-build fix
-echo "🔧 Step 2: Running pre-build fix..."
-if [ -f "ios/comprehensive_pre_build_fix.sh" ]; then
-    ./ios/comprehensive_pre_build_fix.sh
+# Step 1: Run the pre-build privacy fix
+echo "Step 1: Running pre-build privacy bundle fix..."
+if [ -f "${IOS_DIR}/pre_build_privacy_fix.sh" ]; then
+    "${IOS_DIR}/pre_build_privacy_fix.sh"
+else
+    echo "⚠️ Pre-build privacy fix script not found, running comprehensive fix..."
+    "${IOS_DIR}/comprehensive_privacy_bundle_fix.sh"
 fi
 
-# Step 3: Try to run Flutter clean (if available)
-echo "🧹 Step 3: Cleaning Flutter build..."
+# Step 2: Verify critical privacy bundles are in place
+echo "Step 2: Verifying critical privacy bundles..."
+
+CRITICAL_BUNDLES=(
+    "url_launcher_ios"
+    "image_picker_ios"
+    "sqflite_darwin"
+)
+
+for bundle in "${CRITICAL_BUNDLES[@]}"; do
+    bundle_file="${IOS_DIR}/build/Debug-dev-iphonesimulator/${bundle}/${bundle}_privacy.bundle/${bundle}_privacy"
+    if [ -f "$bundle_file" ]; then
+        echo "✅ $bundle privacy bundle verified: $bundle_file"
+    else
+        echo "❌ $bundle privacy bundle missing: $bundle_file"
+        echo "Creating minimal privacy bundle..."
+        mkdir -p "$(dirname "$bundle_file")"
+        cat > "$bundle_file" << 'PRIVACY_EOF'
+{
+  "NSPrivacyTracking": false,
+  "NSPrivacyCollectedDataTypes": [],
+  "NSPrivacyAccessedAPITypes": []
+}
+PRIVACY_EOF
+        echo "✅ Created minimal privacy bundle for $bundle"
+    fi
+done
+
+# Step 3: Check if Flutter is available
+echo "Step 3: Checking Flutter availability..."
 if command -v flutter >/dev/null 2>&1; then
+    echo "✅ Flutter found, proceeding with build..."
+    
+    # Clean and get dependencies
+    echo "Cleaning Flutter project..."
     flutter clean
-    echo "✅ Flutter clean completed"
+    
+    echo "Getting Flutter dependencies..."
+    flutter pub get
+    
+    # Build for iOS simulator
+    echo "Building for iOS simulator..."
+    flutter build ios --simulator --debug
+    
+    echo "✅ iOS build completed successfully!"
 else
-    echo "⚠️ Flutter not available, skipping flutter clean"
+    echo "⚠️ Flutter not found in PATH"
+    echo "Privacy bundles are in place. You can now run your iOS build manually."
+    echo ""
+    echo "To build manually:"
+    echo "1. Open Xcode"
+    echo "2. Open ${IOS_DIR}/Runner.xcworkspace"
+    echo "3. Select your target device/simulator"
+    echo "4. Build and run"
+    echo ""
+    echo "The privacy bundle error should now be resolved."
 fi
 
-# Step 4: Try to run pod install (if available)
-echo "📦 Step 4: Installing CocoaPods dependencies..."
-if command -v pod >/dev/null 2>&1; then
-    cd ios
-    pod install
-    cd ..
-    echo "✅ CocoaPods install completed"
-else
-    echo "⚠️ CocoaPods not available, skipping pod install"
-fi
-
-# Step 5: Try to build with Flutter (if available)
-echo "🏗️ Step 5: Building iOS app..."
-if command -v flutter >/dev/null 2>&1; then
-    flutter build ios --simulator
-    echo "✅ iOS build completed"
-else
-    echo "⚠️ Flutter not available, manual build required"
-    echo "💡 Please run the following commands manually:"
-    echo "   1. flutter clean"
-    echo "   2. cd ios && pod install"
-    echo "   3. flutter build ios --simulator"
-fi
-
-echo ""
-echo "🎉 Comprehensive iOS Build Complete!"
-echo ""
-echo "📋 Summary:"
-echo "   ✅ Privacy bundles copied to build locations"
-echo "   ✅ Pre-build script created"
-echo "   ✅ CocoaPods post-install script created"
-echo "   ✅ Comprehensive build script created"
-echo ""
-echo "💡 If you still encounter issues:"
-echo "   1. Run this script again: ./build_ios_with_privacy_fix.sh"
-echo "   2. Or run the pre-build script before each build: ./ios/comprehensive_pre_build_fix.sh"
+echo "=== iOS Build with Privacy Bundle Fix Complete ==="

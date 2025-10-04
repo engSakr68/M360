@@ -1,3 +1,29 @@
+#!/bin/bash
+
+# Fix Podfile Paths for Privacy Bundles
+# This script modifies the Podfile to handle the path mismatch issue
+
+set -e
+set -u
+set -o pipefail
+
+echo "=== Fix Podfile Paths for Privacy Bundles ==="
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+IOS_DIR="${PROJECT_ROOT}/ios"
+PODFILE="${IOS_DIR}/Podfile"
+
+echo "Project Root: ${PROJECT_ROOT}"
+echo "iOS Directory: ${IOS_DIR}"
+echo "Podfile: ${PODFILE}"
+
+# Backup the current Podfile
+cp "${PODFILE}" "${PODFILE}.backup.$(date +%Y%m%d_%H%M%S)"
+
+echo "✅ Backed up Podfile to ${PODFILE}.backup.$(date +%Y%m%d_%H%M%S)"
+
+# Create a new Podfile with enhanced path handling
+cat > "${PODFILE}" << 'EOF'
 # frozen_string_literal: true
 
  $ios_target_version = '15.0'
@@ -518,3 +544,18 @@ AWS_EOF
   
   puts "✅ Permanent privacy bundle and AWS Core bundle fix completed"
 end
+EOF
+
+echo "✅ Created new Podfile with enhanced path handling"
+echo ""
+echo "The new Podfile includes:"
+echo "1. Enhanced privacy bundle copy script with path handling"
+echo "2. Special handling for url_launcher_ios and sqflite_darwin"
+echo "3. Debug output to show build variables"
+echo "4. Fallback creation of minimal privacy bundles"
+echo ""
+echo "Next steps:"
+echo "1. Run 'cd ios && pod install' to apply the changes"
+echo "2. Try building the iOS app again"
+echo ""
+echo "=== Podfile Path Fix Complete ==="
